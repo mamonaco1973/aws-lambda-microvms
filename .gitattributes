@@ -1,0 +1,10 @@
+*.sh text eol=lf
+*.py text eol=lf
+*.tf text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.hcl text eol=lf
+.gitignore text eol=lf

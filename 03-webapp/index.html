@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>AWS Lambda MicroVM Demo</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>AWS Lambda MicroVM Demo</h1>
+    <p>Run Python in two isolated sessions. Suspend a session, then resume its memory and files.</p>
+    <div id="mode">Sign in to control the demo</div>
+    <button id="login">Sign in with Cognito</button>
+    <button id="logout" hidden>Sign out</button>
+  </header>
+  <main>
+    <div class="instructions">
+      <strong>Demo:</strong> Launch Alice and Bob. Create Alice's state, inspect Bob, suspend Alice,
+      and click <strong>Wake via HTTPS</strong>. Run Alice's next cell to verify the state survived.
+    </div>
+    <div class="tenants" id="tenants"></div>
+    <section class="evidence">
+      <h2>Lifecycle and Request Log</h2>
+      <p>Automatic refresh checks AWS lifecycle state only. Application values show the last sample.
+        <strong>Sample</strong> sends traffic and can wake a suspended MicroVM.</p>
+      <div id="timeline" aria-live="polite"></div>
+    </section>
+  </main>
+  <footer>
+    512 MiB baseline per MicroVM | Suspend after 60 seconds idle | Terminate after 15 minutes suspended | Maximum lifetime 30 minutes
+    <br>Suspension stops compute charges; snapshot storage and I/O still cost money. Timings include client and network overhead.
+  </footer>
+  <script src="/auth.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

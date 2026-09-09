@@ -1,0 +1,123 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram id="microvms" name="AWS Lambda MicroVMs">
+    <mxGraphModel page="1" pageWidth="1420" pageHeight="960" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="cloud" parent="1" vertex="1" value="AWS Cloud - provisioned with Terraform" style="fillColor=none;strokeColor=#232F3E;verticalAlign=top;align=left;spacing=12;fontSize=16;">
+          <mxGeometry as="geometry" x="250" y="20" width="1150" height="910" />
+        </mxCell>
+        <mxCell id="edge0" parent="1" edge="1" source="browser" target="web" value="assets" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="120" y="125" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge1" parent="1" edge="1" source="browser" target="cognito" value="login" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="180" y="285" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge2" parent="1" edge="1" source="browser" target="gateway" value="access token" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge3" parent="1" edge="1" source="gateway" target="controller" value="" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge4" parent="1" edge="1" source="controller" target="sqs" value="enqueue" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge5" parent="1" edge="1" source="sqs" target="worker" value="" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge6" parent="1" edge="1" source="controller" target="ddb" value="metadata" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge7" parent="1" edge="1" source="worker" target="ddb" value="save result" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1085" y="480" />
+              <mxPoint x="1085" y="690" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge8" parent="1" edge="1" source="worker" target="control" value="AWS SDK" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge9" parent="1" edge="1" source="worker" target="alice" value="VM-authenticated HTTPS" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1170" y="565" />
+              <mxPoint x="960" y="565" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge10" parent="1" edge="1" source="worker" target="bob" value="HTTPS" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1385" y="455" />
+              <mxPoint x="1385" y="760" />
+              <mxPoint x="1240" y="760" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge11" parent="1" edge="1" source="artifact" target="image" value="build" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="edge12" parent="1" edge="1" source="controller" target="control" value="GetMicrovm only" style="endArrow=classic;html=0;fontSize=11;labelBackgroundColor=#ffffff;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="720" y="600" />
+              <mxPoint x="1045" y="600" />
+              <mxPoint x="1045" y="750" />
+              <mxPoint x="1200" y="750" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="browser" parent="1" vertex="1" value="Browser&#10;No local server" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#dae8fc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="20" y="390" width="200" height="90" />
+        </mxCell>
+        <mxCell id="web" parent="1" vertex="1" value="S3 HTTPS frontend&#10;HTML + JS + config" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#d5e8d4;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="280" y="80" width="220" height="90" />
+        </mxCell>
+        <mxCell id="cognito" parent="1" vertex="1" value="Cognito Hosted UI&#10;Code + PKCE login" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#e1d5e7;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="280" y="240" width="220" height="90" />
+        </mxCell>
+        <mxCell id="gateway" parent="1" vertex="1" value="API Gateway&#10;JWT + required scope" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#e1d5e7;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="280" y="410" width="220" height="90" />
+        </mxCell>
+        <mxCell id="controller" parent="1" vertex="1" value="Controller Lambda&#10;Submit / poll status" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#ffe6cc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="560" y="410" width="220" height="90" />
+        </mxCell>
+        <mxCell id="ddb" parent="1" vertex="1" value="DynamoDB&#10;IDs, observations, jobs&#10;No interpreter restore" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#dae8fc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="560" y="640" width="220" height="100" />
+        </mxCell>
+        <mxCell id="sqs" parent="1" vertex="1" value="SQS FIFO&#10;Serialized operations" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#f8cecc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="840" y="410" width="210" height="90" />
+        </mxCell>
+        <mxCell id="worker" parent="1" vertex="1" value="Worker Lambda&#10;MicroVM tokens stay here" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#ffe6cc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="1110" y="410" width="240" height="90" />
+        </mxCell>
+        <mxCell id="control" parent="1" vertex="1" value="Lambda MicroVM API&#10;Lifecycle + tokens" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#ffe6cc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="1110" y="630" width="240" height="90" />
+        </mxCell>
+        <mxCell id="artifact" parent="1" vertex="1" value="Private S3 source&#10;Dockerfile + Python" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#d5e8d4;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="560" y="80" width="220" height="90" />
+        </mxCell>
+        <mxCell id="image" parent="1" vertex="1" value="Initialized image&#10;Memory + disk snapshot" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#ffe6cc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="840" y="80" width="250" height="90" />
+        </mxCell>
+        <mxCell id="alice" parent="1" vertex="1" value="Alice MicroVM&#10;Interpreter + RAM + files&#10;HTTPS :8080 / hooks :8081" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#d5e8d4;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="820" y="800" width="260" height="100" />
+        </mxCell>
+        <mxCell id="bob" parent="1" vertex="1" value="Bob MicroVM&#10;Interpreter + RAM + files&#10;HTTPS :8080 / hooks :8081" style="rounded=0;whiteSpace=wrap;html=0;fontSize=14;fillColor=#dae8fc;strokeColor=#666666;">
+          <mxGeometry as="geometry" x="1110" y="800" width="260" height="100" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
