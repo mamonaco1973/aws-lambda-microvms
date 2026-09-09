@@ -13,14 +13,13 @@ import urllib.request
 import zipfile
 
 import boto3
+from terraform_state import read_outputs
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def outputs(directory):
-    result = subprocess.run(["terraform", f"-chdir={ROOT / directory}", "output", "-json"],
-                            check=True, capture_output=True, text=True)
-    return {key: value["value"] for key, value in json.loads(result.stdout).items()}
+    return read_outputs(ROOT, directory)
 
 
 def package():
@@ -142,6 +141,7 @@ def main():
     settings = outputs("02-lambdas")
     if not settings:
         if args.command == "quiesce":
+            print("NOTE: No deployed controller in local Terraform state; maintenance is not needed.")
             return
         raise RuntimeError("AWS web backend has not been deployed")
     region = image["region"]

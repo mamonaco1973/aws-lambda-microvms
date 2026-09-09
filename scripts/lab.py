@@ -3,18 +3,12 @@ import argparse
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "02-lambdas" / "app"))
 from control import ROOT, AWSLab, aws_client, pages
-
-
-def terraform(*args, capture=False):
-    result = subprocess.run(["terraform", f"-chdir={ROOT / '01-microvms'}", *args], check=True,
-                            text=True, stdout=subprocess.PIPE if capture else None)
-    return result.stdout if capture else None
+from terraform_state import read_outputs
 
 
 def package():
@@ -24,12 +18,11 @@ def package():
             info = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, (ROOT / "01-microvms" / "app" / name).read_bytes())
-    print("Packaged dist/app.zip (deterministic, explicit file allowlist)")
+    print("NOTE: Packaged dist/app.zip (deterministic, explicit file allowlist)")
 
 
 def config():
-    result = json.loads(terraform("output", "-json", capture=True))
-    return {k: v["value"] for k, v in result.items()}
+    return read_outputs(ROOT, "01-microvms")
 
 
 def doctor(region):
@@ -50,7 +43,7 @@ def doctor(region):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["doctor", "prepare", "package", "apply", "validate", "cleanup", "destroy", "status"])
+    parser.add_argument("command", choices=["doctor", "write-image-vars", "package", "validate", "cleanup", "status"])
     parser.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"))
     parser.add_argument("--profile")
     parser.add_argument("--local", action="store_true")
@@ -61,23 +54,11 @@ def main():
         return package()
     if args.command == "doctor":
         return doctor(args.region)
-    if args.command in {"prepare", "apply"}:
+    if args.command == "write-image-vars":
         version = doctor(args.region)
-        package()
-        terraform("init", "-input=false")
-        existing = json.loads(terraform("output", "-json", capture=True))
-        if "image_arn" in existing:
-            print("Terminating sessions from the current image before applying changes")
-            AWSLab({k: v["value"] for k, v in existing.items()}).cleanup()
         (ROOT / "01-microvms" / "deployment.auto.tfvars.json").write_text(json.dumps({
             "region": args.region, "base_image_version": version}, indent=2))
-        if args.command == "prepare":
-            return
-        terraform("apply")
-        settings = config()
-        (ROOT / ".lab").mkdir(exist_ok=True)
-        (ROOT / ".lab" / "deployment.json").write_text(json.dumps(settings, indent=2))
-        print("NOTE: Image ready. Use ./apply.sh to deploy the Cognito web application and validate.")
+        print("NOTE: Wrote image region and managed base image version to deployment.auto.tfvars.json")
         return
     if args.local:
         if args.command != "validate":
@@ -96,10 +77,8 @@ def main():
     if args.command == "validate":
         from validation import validate
         return validate(backend)
-    if args.command in {"cleanup", "destroy"}:
+    if args.command == "cleanup":
         print(backend.cleanup())
-        if args.command == "destroy":
-            terraform("destroy")
         return
     if args.command == "status":
         print(json.dumps({t: backend.status(t) for t in backend.sessions}, indent=2))

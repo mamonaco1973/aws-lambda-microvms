@@ -7,7 +7,7 @@ Checked September 9, 2026 on this Windows workstation. **No AWS infrastructure h
 | AWS CLI | 2.36.41 recognizes `lambda-microvms` |
 | Default profile | Previously authenticated with STS using exported Windows trusted CAs |
 | MicroVM discovery | Managed base image version `1` reported AVAILABLE in us-east-1 |
-| Python/controller suite | 19 tests passed after AWS-controller implementation |
+| Python/controller/deployment suite | 27 tests passed, including environment credentials, first-run state handling and Terraform diagnostics |
 | Local application acceptance | All 9 applicable checks passed; test processes terminated |
 | Controller packaging | Built `dist/controller.zip` with pinned, pure-Python SDK dependencies |
 | Browser / PKCE suite | Passed in headless Edge with intercepted HTTPS fixtures; screenshot saved |

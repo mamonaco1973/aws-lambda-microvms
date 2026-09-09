@@ -10,9 +10,24 @@ echo "NOTE: Running environment validation..."
 ./check_env.sh
 source ./scripts/common.sh
 
-echo "NOTE: Preparing the application artifact and managed base image version..."
-"$PYTHON" scripts/cloud.py quiesce
-"$PYTHON" scripts/lab.py prepare
+echo "NOTE: Packaging the MicroVM application..."
+"$PYTHON" scripts/lab.py package
+echo "NOTE: Selecting the managed base image and writing Terraform variables..."
+"$PYTHON" scripts/lab.py write-image-vars
+echo "NOTE: Initializing MicroVM Terraform providers..."
+terraform -chdir=01-microvms init -input=false
+
+if [[ -f 02-lambdas/terraform.tfstate || -f 02-lambdas/terraform.tfstate.backup ]]; then
+  echo "NOTE: Stopping new controller operations and waiting for the worker before updating..."
+  terraform -chdir=02-lambdas init -input=false
+  "$PYTHON" scripts/cloud.py quiesce
+fi
+if [[ -f 01-microvms/terraform.tfstate || -f 01-microvms/terraform.tfstate.backup ]]; then
+  echo "NOTE: Terminating existing sessions for this image before updating it..."
+  "$PYTHON" scripts/lab.py cleanup
+else
+  echo "NOTE: First deployment; no existing MicroVM sessions to clean up."
+fi
 echo "NOTE: Building Lambda MicroVM infrastructure..."
 terraform -chdir=01-microvms apply -auto-approve
 echo "NOTE: Deploying Cognito, API Gateway and Lambda controller..."

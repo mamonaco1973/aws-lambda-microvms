@@ -78,6 +78,8 @@ export AWS_DEFAULT_REGION=us-east-1
 
 Reapplying enters maintenance mode and terminates sessions from the current image before changing it. Source changes produce a differently named image so an old initialized snapshot cannot be confused with new code. Use a separate clone and Terraform state for each independent deployment.
 
+`apply.sh` shows packaging, image-variable generation and Terraform initialization explicitly. On a first deployment it skips maintenance and session cleanup. Those update-only steps run when local state exists. Failed reads of existing state display Terraform's underlying diagnostic instead of treating the failure as an empty deployment.
+
 For Windows Git Bash, the working directory is `/c/cloudenv/aws-lambda-microvms`. Deployment state is local to the machine that applies the project; run destroy from that same checkout.
 
 ## Run and Validate
