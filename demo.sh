@@ -1,4 +1,7 @@
 #!/bin/bash
-# Print the AWS-hosted frontend URL. There is no local web server.
-source "$(dirname "$0")/scripts/common.sh"
-"$PYTHON" scripts/cloud.py url
+# Print the AWS-hosted frontend URL. Nothing runs locally to serve the app.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+echo "NOTE: Application URL: $(terraform -chdir=02-lambdas output -raw web_url)"
+echo "NOTE: Sign in with a Cognito user, or create one with ./create_user.sh."

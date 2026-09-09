@@ -1,50 +1,124 @@
 #!/bin/bash
-# ================================================================================
-# Build the Lambda MicroVM Demo
-# Creates supporting AWS resources and a pre-initialized image with Terraform.
-# Runs a real two-session validation and terminates the validation sessions.
-# ================================================================================
+# ==============================================================================
+# File: apply.sh
+# ==============================================================================
+# Purpose:
+#   Deploys the Lambda MicroVM demo in three phases: the pre-initialized MicroVM
+#   image, the Cognito/API/Lambda controller, and the static web frontend.
+#
+# Notes:
+#   - Requires AWS CLI v2 (with lambda-microvms), Terraform, jq, zip, python3.
+#   - Lambda builds the ARM64 image remotely; no local Docker daemon is needed.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# GLOBAL CONFIGURATION
+# ------------------------------------------------------------------------------
+# Sets the AWS region and enforces strict Bash error handling:
+#   -e : Exit immediately on command failure
+#   -u : Treat unset variables as errors
+#   -o pipefail : Catch errors in piped commands
+# ------------------------------------------------------------------------------
+export AWS_DEFAULT_REGION="us-east-1"
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# ------------------------------------------------------------------------------
+# ENVIRONMENT PRE-CHECK
+# ------------------------------------------------------------------------------
 echo "NOTE: Running environment validation..."
 ./check_env.sh
-source ./scripts/common.sh
 
+# ------------------------------------------------------------------------------
+# PACKAGE THE MICROVM APPLICATION
+# ------------------------------------------------------------------------------
+# Lambda builds the image from this zip: a Dockerfile plus the session server.
+# ------------------------------------------------------------------------------
 echo "NOTE: Packaging the MicroVM application..."
-"$PYTHON" scripts/lab.py package
-echo "NOTE: Selecting the managed base image and writing Terraform variables..."
-"$PYTHON" scripts/lab.py write-image-vars
-echo "NOTE: Initializing MicroVM Terraform providers..."
-terraform -chdir=01-microvms init -input=false
 
-if [[ -f 02-lambdas/terraform.tfstate || -f 02-lambdas/terraform.tfstate.backup ]]; then
-  echo "NOTE: Stopping new controller operations and waiting for the worker before updating..."
-  terraform -chdir=02-lambdas init -input=false
-  "$PYTHON" scripts/cloud.py quiesce
+rm -rf dist && mkdir -p dist
+(cd 01-microvms/app && zip -q -X -r ../../dist/app.zip Dockerfile server.py worker.py)
+
+# ------------------------------------------------------------------------------
+# PACKAGE THE CONTROLLER LAMBDA
+# ------------------------------------------------------------------------------
+# The Lambda runtime's bundled SDK predates lambda-microvms, so a current boto3
+# is vendored into the deployment package.
+# ------------------------------------------------------------------------------
+echo "NOTE: Packaging the controller Lambda..."
+
+rm -rf dist/build && mkdir -p dist/build
+python3 -m pip install --quiet --disable-pip-version-check --no-compile \
+  --only-binary=:all: --target dist/build "boto3>=1.43.90"
+cp 02-lambdas/app/*.py dist/build/
+(cd dist/build && zip -q -X -r ../controller.zip . -x '*/__pycache__/*')
+
+# ------------------------------------------------------------------------------
+# SELECT THE MANAGED BASE IMAGE
+# ------------------------------------------------------------------------------
+# Base image versions age out through DEPRECATED/EXPIRING, so resolve an
+# AVAILABLE one at deploy time rather than pinning a number in source.
+# ------------------------------------------------------------------------------
+echo "NOTE: Selecting an AVAILABLE managed base image version..."
+
+BASE_IMAGE_ARN="arn:aws:lambda:${AWS_DEFAULT_REGION}:aws:microvm-image:al2023-1"
+BASE_IMAGE_VERSION=$(aws lambda-microvms list-managed-microvm-image-versions \
+  --image-identifier "${BASE_IMAGE_ARN}" \
+  --query "items[?state=='AVAILABLE'] | [0].imageVersion" --output text)
+
+if [[ -z "${BASE_IMAGE_VERSION}" || "${BASE_IMAGE_VERSION}" == "None" ]]; then
+  echo "ERROR: No AVAILABLE managed base image version found in ${AWS_DEFAULT_REGION}."
+  exit 1
 fi
-if [[ -f 01-microvms/terraform.tfstate || -f 01-microvms/terraform.tfstate.backup ]]; then
-  echo "NOTE: Terminating existing sessions for this image before updating it..."
-  "$PYTHON" scripts/lab.py cleanup
-else
-  echo "NOTE: First deployment; no existing MicroVM sessions to clean up."
-fi
-echo "NOTE: Building Lambda MicroVM infrastructure..."
-terraform -chdir=01-microvms apply -auto-approve
-echo "NOTE: Deploying Cognito, API Gateway and Lambda controller..."
-"$PYTHON" scripts/cloud.py package
-"$PYTHON" scripts/cloud.py prepare-backend
+echo "NOTE: Using base image version ${BASE_IMAGE_VERSION}"
+
+# ------------------------------------------------------------------------------
+# BUILD THE MICROVM IMAGE
+# ------------------------------------------------------------------------------
+echo "NOTE: Building the MicroVM image (this takes several minutes)..."
+
+terraform -chdir=01-microvms init -input=false
+terraform -chdir=01-microvms apply -auto-approve \
+  -var="region=${AWS_DEFAULT_REGION}" \
+  -var="base_image_version=${BASE_IMAGE_VERSION}"
+
+IMAGE_ARN=$(terraform -chdir=01-microvms output -raw image_arn)
+IMAGE_VERSION=$(terraform -chdir=01-microvms output -raw image_version)
+echo "NOTE: MicroVM image ${IMAGE_ARN} version ${IMAGE_VERSION}"
+
+# ------------------------------------------------------------------------------
+# BUILD COGNITO, API GATEWAY AND THE CONTROLLER LAMBDA
+# ------------------------------------------------------------------------------
+echo "NOTE: Deploying Cognito, API Gateway and the controller Lambda..."
+
 terraform -chdir=02-lambdas init -input=false
-terraform -chdir=02-lambdas apply -auto-approve
-"$PYTHON" scripts/cloud.py prepare-web
+terraform -chdir=02-lambdas apply -auto-approve \
+  -var="region=${AWS_DEFAULT_REGION}" \
+  -var="name=microvms" \
+  -var="image_arn=${IMAGE_ARN}" \
+  -var="image_version=${IMAGE_VERSION}"
+
+# ------------------------------------------------------------------------------
+# BUILD THE WEB APPLICATION
+# ------------------------------------------------------------------------------
+# config.json carries the Cognito domain, client id and API URL to the browser.
+# ------------------------------------------------------------------------------
+echo "NOTE: Building the web application..."
+
+WEB_BUCKET=$(terraform -chdir=02-lambdas output -raw web_bucket_name)
+terraform -chdir=02-lambdas output -json web_config > 03-webapp/config.json
+
 terraform -chdir=03-webapp init -input=false
-terraform -chdir=03-webapp apply -auto-approve
-"$PYTHON" scripts/cloud.py resume
+terraform -chdir=03-webapp apply -auto-approve \
+  -var="region=${AWS_DEFAULT_REGION}" \
+  -var="web_bucket_name=${WEB_BUCKET}"
+
+# ------------------------------------------------------------------------------
+# BUILD VALIDATION
+# ------------------------------------------------------------------------------
 echo "NOTE: Running build validation..."
 ./validate.sh
-if [[ "$RUN_BROWSER_TESTS" == 1 ]]; then
-  ./validate_web.sh
-else
-  echo "NOTE: Automated Cognito/browser acceptance was not run (RUN_BROWSER_TESTS=0)."
-  echo "NOTE: After creating your presenter, complete login and the browser steps in RECORDING.md."
-fi
-echo "NOTE: Build complete. Run ./demo.sh, then use Cognito Sign up to register and verify your email."
+
+# ==============================================================================
+# END OF SCRIPT
+# ==============================================================================

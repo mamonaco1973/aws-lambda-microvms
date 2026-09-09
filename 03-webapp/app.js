@@ -69,15 +69,10 @@ function createPanel(tenant) {
   select.value = tenant === 'alice' ? 'seed' : 'inspect';
   const editor = panel.querySelector('textarea');
   editor.value = config.presets[select.value];
-  editor.readOnly = config.mode.startsWith('LOCAL');
   select.onchange = () => { editor.value = config.presets[select.value]; };
 
   for (const button of panel.querySelectorAll('button')) {
     button.onclick = () => action(tenant, button.dataset.action);
-    if (config.mode.startsWith('LOCAL') && ['suspend', 'wake', 'auth-check'].includes(button.dataset.action)) {
-      button.disabled = true;
-      button.dataset.unsupported = 'true';
-    }
   }
   return panel;
 }
@@ -124,7 +119,7 @@ function render(tenant, data, sampled = false) {
 }
 
 // -----------------------------------------------------------------------------
-// FIFO worker serializes lifecycle operations. MicroVM tokens stay inside AWS.
+// Actions complete synchronously; MicroVM endpoint tokens never leave AWS.
 // -----------------------------------------------------------------------------
 async function action(tenant, operation) {
   if (busy) return;
@@ -132,25 +127,15 @@ async function action(tenant, operation) {
   for (const button of document.querySelectorAll('button')) button.disabled = true;
   log(`${tenant.toUpperCase()} - ${operation} requested`);
   try {
-    const submitted = await auth.api('/api/action', {
+    const data = await auth.api('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenant,
-        request_id: crypto.randomUUID(),
         action: operation,
         code: document.querySelector(`#${tenant} textarea`).value,
       }),
     });
-    let job;
-    const deadline = Date.now() + 500000;
-    do {
-      if (Date.now() > deadline) throw Error('Operation timed out. Inspect the session before submitting again.');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      job = await auth.api(`/api/operations/${submitted.operation_id}`);
-    } while (['QUEUED', 'RUNNING'].includes(job.status));
-    const data = job.result;
-    if (job.status !== 'DONE') throw Error(data?.error || 'Operation failed');
     if (data.checks) {
       log(`${tenant.toUpperCase()} - AUTH PASS ${JSON.stringify(data.checks)}`);
     } else {
@@ -162,9 +147,7 @@ async function action(tenant, operation) {
     log(`${tenant.toUpperCase()} - ${error.message}`, true);
   } finally {
     busy = false;
-    for (const button of document.querySelectorAll('button')) {
-      button.disabled = button.dataset.unsupported === 'true';
-    }
+    for (const button of document.querySelectorAll('button')) button.disabled = false;
   }
 }
 
@@ -179,7 +162,6 @@ async function refresh() {
   }
   try {
     const data = await auth.api('/api/status');
-    if (data.busy) return;
     for (const [tenant, state] of Object.entries(data)) {
       if (states[tenant] && states[tenant].state !== state.state) {
         log(`${tenant.toUpperCase()} - AWS lifecycle ${states[tenant].state} -> ${state.state}`);
@@ -199,9 +181,7 @@ async function main() {
   document.querySelector('#login').hidden = true;
   document.querySelector('#logout').hidden = false;
   config = await auth.api('/api/config');
-  const badge = document.querySelector('#mode');
-  badge.textContent = config.mode;
-  if (config.mode.startsWith('LOCAL')) badge.classList.add('local');
+  document.querySelector('#mode').textContent = 'AWS LIVE';
   for (const tenant of ['alice', 'bob']) {
     document.querySelector('#tenants').append(createPanel(tenant));
   }

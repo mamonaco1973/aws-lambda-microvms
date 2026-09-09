@@ -21,12 +21,12 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
 resource "aws_apigatewayv2_integration" "this" {
   api_id                 = aws_apigatewayv2_api.this.id
   integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.this["api"].invoke_arn
+  integration_uri        = aws_lambda_function.api.invoke_arn
   payload_format_version = "2.0"
   timeout_milliseconds   = 29000
 }
 resource "aws_apigatewayv2_route" "this" {
-  for_each             = toset(["GET /api/config", "GET /api/status", "POST /api/action", "GET /api/operations/{id}"])
+  for_each             = toset(["GET /api/config", "GET /api/status", "POST /api/action"])
   api_id               = aws_apigatewayv2_api.this.id
   route_key            = each.key
   target               = "integrations/${aws_apigatewayv2_integration.this.id}"
@@ -44,7 +44,7 @@ resource "aws_apigatewayv2_stage" "this" {
   }
 }
 resource "aws_lambda_permission" "api" {
-  function_name = aws_lambda_function.this["api"].function_name
+  function_name = aws_lambda_function.api.function_name
   action        = "lambda:InvokeFunction"
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"

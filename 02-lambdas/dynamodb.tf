@@ -1,3 +1,5 @@
+# One row per tenant ("alice" / "bob") holding the MicroVM id, endpoint and the
+# last application sample. Interpreter state never leaves the MicroVM itself.
 resource "aws_dynamodb_table" "state" {
   name         = "${var.name}-state"
   billing_mode = "PAY_PER_REQUEST"
@@ -5,9 +7,5 @@ resource "aws_dynamodb_table" "state" {
   attribute {
     name = "id"
     type = "S"
-  }
-  ttl {
-    attribute_name = "expires"
-    enabled        = true
   }
 }

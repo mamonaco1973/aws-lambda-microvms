@@ -1,20 +1,21 @@
-.venv/
-.venv-*/
 __pycache__/
-.pytest_cache/
+*.pyc
+
 .terraform/
 *.tfstate*
 *.tfplan
-*.auto.tfvars.json
-.lab/
-dist/
-test-results/
-*.pyc
-.env
-.env.*
-*.pem
-*.key
 *.tfvars
 *.tfvars.json
 crash.log
 crash.*.log
+
+# Build artifacts: the MicroVM source zip and the controller deployment package.
+dist/
+
+# Generated at deploy time from the 02-lambdas outputs.
+03-webapp/config.json
+
+.env
+.env.*
+*.pem
+*.key

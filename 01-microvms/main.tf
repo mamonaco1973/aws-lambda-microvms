@@ -1,18 +1,15 @@
-# ================================================================================
+# ==============================================================================
 # Provider Configuration
-# AWS manages supporting resources and the image through Cloud Control.
-# No CloudFormation template or stack is deployed.
-# ================================================================================
+# ==============================================================================
+# The MicroVM image is created through Cloud Control, which speaks to the same
+# AWS::Lambda::MicrovmImage resource type as CloudFormation. No stack is created.
+
 terraform {
   required_version = ">= 1.7, < 2.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
     }
   }
 }
