@@ -1,13 +1,13 @@
-__pycache__/
-*.pyc
-
-.terraform/
-*.tfstate*
-*.tfplan
+.terraform
+*.tfstate
+*.tfstate.backup
+*.terraform.lock.hcl
+*.terraform.*
 *.tfvars
 *.tfvars.json
-crash.log
-crash.*.log
+*.pem
+*.pub
+*.zip
 
 # Build artifacts: the MicroVM source zip and the controller deployment package.
 dist/
@@ -15,7 +15,5 @@ dist/
 # Generated at deploy time from the 02-lambdas outputs.
 03-webapp/config.json
 
-.env
-.env.*
-*.pem
-*.key
+__pycache__/
+*.pyc
