@@ -118,7 +118,9 @@ At the published us-east-1 example rates, two baseline MicroVMs running for 15 m
 
 ## Architecture and Limits
 
-[ARCHITECTURE.md](ARCHITECTURE.md) documents the routes, authentication boundaries, operation protocol, state ownership and failure behavior. Cognito authenticates the presenter; Alice and Bob are the two demo sessions, not separate Cognito users. All administrator-created presenters share control of those two slots.
+[ARCHITECTURE.md](ARCHITECTURE.md) documents the routes, authentication boundaries, operation protocol, state ownership and failure behavior. Cognito authenticates the presenter; Alice and Bob are the two demo sessions, not separate Cognito users. All signed-in users, including self-registered users, share control of those two slots.
+
+To register yourself, open the application URL, click **Sign in with Cognito**, then **Sign up**. Enter your email and a password (at least 12 characters, including uppercase, lowercase and a number), verify the emailed code, and sign in. `create_user.sh` remains an optional way to create a presenter account.
 
 Arbitrary Python runs inside the MicroVM. The Python interpreter itself is not a security sandbox. The MicroVM receives no AWS execution role; internet egress is enabled. Session preservation is ephemeral and does not replace durable storage. Termination, expiry or failure can lose state. The demo uses fresh HTTPS requests after resume, not a promise that old sockets survive suspension.
 

@@ -3,7 +3,7 @@ resource "aws_cognito_user_pool" "this" {
   name                     = var.name
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
-  admin_create_user_config { allow_admin_create_user_only = true }
+  admin_create_user_config { allow_admin_create_user_only = false }
   password_policy {
     minimum_length    = 12
     require_lowercase = true

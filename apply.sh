@@ -47,4 +47,4 @@ else
   echo "NOTE: Automated Cognito/browser acceptance was not run (RUN_BROWSER_TESTS=0)."
   echo "NOTE: After creating your presenter, complete login and the browser steps in RECORDING.md."
 fi
-echo "NOTE: Build complete. Run ./create_user.sh once, then ./demo.sh"
+echo "NOTE: Build complete. Run ./demo.sh, then use Cognito Sign up to register and verify your email."

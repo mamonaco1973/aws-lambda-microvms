@@ -30,13 +30,13 @@ The workstation runs deployment and validation commands. It does not serve the w
 
 ## Two different authentication boundaries
 
-Cognito authenticates the presenter. The public SPA client has no secret and uses S256 PKCE, a fresh random state, an exact callback URI and session-scoped access-token storage. API Gateway validates issuer, audience, signature, expiry and the `microvms/control` scope. The controller additionally requires `token_use=access`. Account creation is administrator-only; `create_user.sh` prompts for a password without putting it in shell history or Terraform state.
+Cognito authenticates the presenter. The public SPA client has no secret and uses S256 PKCE, a fresh random state, an exact callback URI and session-scoped access-token storage. API Gateway validates issuer, audience, signature, expiry and the `microvms/control` scope. The controller additionally requires `token_use=access`. Users can register through the Hosted UI and verify their email before signing in. Alternatively, `create_user.sh` prompts for a password without putting it in shell history or Terraform state.
 
 The static HTML, JavaScript and configuration are publicly readable, as in `aws-cognito-app`. They contain no secrets or session observations. Only the six named static objects are granted anonymous S3 read access. The bucket's regional REST endpoint provides HTTPS. API CORS allows that exact origin.
 
 Separately, the worker requests a MicroVM-specific token restricted to port 8080. Those tokens remain in Lambda memory; they are neither sent to the browser nor written to DynamoDB. The demo tests absent tokens, the other VM's token and access to hook port 8081. Cognito is not installed inside either MicroVM.
 
-This is one presenter's two-slot lab: every administrator-created presenter can control Alice and Bob. It is not a multi-customer application. Job results are additionally restricted to the submitting Cognito subject.
+This is a shared two-slot lab: every signed-in user, including self-registered users, can control Alice and Bob. It is not a multi-customer application. Job results are additionally restricted to the submitting Cognito subject.
 
 ## Asynchronous operations and failure behavior
 
