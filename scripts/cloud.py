@@ -150,7 +150,7 @@ def main():
     if args.command == "user":
         return create_user(settings, region)
     if args.command == "url":
-        return print("Open " + settings["web_url"] + " and sign in with Cognito. No local server is needed.")
+        return print("NOTE: Application URL: " + settings["web_url"] + "\nNOTE: Sign in with your Cognito user.")
     if args.command == "check":
         return check_web(settings)
     if args.command == "quiesce":

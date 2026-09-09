@@ -11,5 +11,10 @@ fi
 "$PYTHON" scripts/lab.py validate "$@"
 if [[ "${1:-}" != "--local" ]]; then
   "$PYTHON" scripts/cloud.py check
+  "$PYTHON" scripts/cloud.py resume
+  trap - EXIT
 fi
 echo "NOTE: Validation complete. Test sessions have been terminated."
+if [[ "${1:-}" != "--local" ]]; then
+  "$PYTHON" scripts/cloud.py url
+fi
