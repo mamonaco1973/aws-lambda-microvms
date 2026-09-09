@@ -4,10 +4,10 @@
 
 The live deployment must pass validation first. The current workstation provider-TLS blocker is recorded in [VALIDATION.md](VALIDATION.md); do not record fixture results as AWS evidence.
 
-In Git Bash:
+On the Ubuntu/Debian development box, from the directory containing your clone:
 
 ```bash
-cd /c/cloudenv/aws-lambda-microvms
+cd aws-lambda-microvms
 ./check_env.sh
 ./apply.sh
 ./create_user.sh
@@ -45,7 +45,7 @@ Validation terminates this demo's sessions. Do not run it while recording. Avoid
 ## Terminal Commands During Recording
 
 ```bash
-cd /c/cloudenv/aws-lambda-microvms
+cd aws-lambda-microvms
 ./demo.sh
 
 # After completing the browser sequence:
