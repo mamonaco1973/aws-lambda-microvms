@@ -13,7 +13,8 @@ for command_name in aws terraform "$PYTHON"; do
   fi
   echo "NOTE: $command_name is found in the current PATH."
 done
-"$PYTHON" --version
+python_version="$("$PYTHON" --version)"
+echo "NOTE: $python_version"
 
 if [[ ! -d .venv ]]; then
   echo "NOTE: Creating the project's Python virtual environment..."
@@ -22,11 +23,12 @@ fi
 source "$PROJECT_DIR/scripts/common.sh"
 if ! "$PYTHON" -c "import boto3; assert boto3.__version__ == '1.43.90'" 2>/dev/null; then
   echo "NOTE: Installing the project dependencies..."
-  "$PYTHON" -m pip install -r requirements.txt
+  "$PYTHON" -m pip install -r requirements.txt | sed 's/^/NOTE: /'
 fi
 
 echo "NOTE: Checking the AWS CLI connection using your active AWS credentials."
-aws sts get-caller-identity --query Account --output text
+aws_account="$(aws sts get-caller-identity --query Account --output text)"
+echo "NOTE: AWS account: $aws_account"
 aws lambda-microvms run-microvm --generate-cli-skeleton input >/dev/null
 "$PYTHON" scripts/lab.py doctor
 echo "NOTE: Environment validation complete."

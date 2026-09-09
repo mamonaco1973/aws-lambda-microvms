@@ -37,14 +37,14 @@ def doctor(region):
     from botocore.config import Config
     client = aws_client(region)
     identity = boto3.Session(region_name=region).client("sts", config=Config(connect_timeout=5, read_timeout=10)).get_caller_identity()
-    print(f"SDK {boto3.__version__}; account {identity['Account']}; Region {region}")
+    print(f"NOTE: SDK {boto3.__version__}; account {identity['Account']}; Region {region}")
     base = f"arn:aws:lambda:{region}:aws:microvm-image:al2023-1"
     versions = [v for v in pages(client, "list_managed_microvm_image_versions", imageIdentifier=base)
                 if v.get("status") == "AVAILABLE"]
     if not versions:
         raise RuntimeError("No AVAILABLE managed base image versions")
     latest = max(versions, key=lambda v: v["createdAt"])
-    print(f"Managed base image {latest['imageVersion']} is AVAILABLE")
+    print(f"NOTE: Managed base image {latest['imageVersion']} is AVAILABLE")
     return latest["imageVersion"]
 
 
