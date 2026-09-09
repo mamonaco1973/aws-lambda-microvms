@@ -21,11 +21,22 @@ def validate(lab, report_name=None):
     try:
         alice = lab.action("alice", "launch")
         bob = lab.action("bob", "launch")
+        # Keep application observations, never endpoint auth tokens or session records.
+        report["measurements"]["launch_snapshots"] = {
+            "alice": alice["snapshot"], "bob": bob["snapshot"]
+        }
+        if lab.mode == "AWS LIVE":
+            report["measurements"]["image"] = {
+                key: lab.config[key] for key in ("image_arn", "image_version")
+            }
         report["measurements"]["launch_ms"] = {"alice": alice["launch_to_first_response_ms"], "bob": bob["launch_to_first_response_ms"]}
         check(alice["snapshot"]["session_nonce"] != bob["snapshot"]["session_nonce"], "Per-session identity generated after image snapshot")
         check(alice["snapshot"]["initialization"]["dataset_sha256"] == bob["snapshot"]["initialization"]["dataset_sha256"], "Both interpreters have the same initialized dataset")
         if lab.mode == "AWS LIVE":
-            check(alice["snapshot"]["image_marker"] == bob["snapshot"]["image_marker"], "Both VMs inherited the same pre-snapshot image marker")
+            check(alice["snapshot"]["image_marker"] == bob["snapshot"]["image_marker"],
+                  "Both VMs inherited the same pre-snapshot image marker "
+                  f"(Alice={alice['snapshot']['image_marker']}, Bob={bob['snapshot']['image_marker']}; "
+                  "see launch_snapshots and image in the evidence report)")
         seeded = cell("alice", "seed")
         check(seeded["result"]["ok"], "Alice creates memory, generator and file state")
         independent = cell("bob", "inspect")["result"]["stdout"]
