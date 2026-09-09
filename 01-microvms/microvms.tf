@@ -10,7 +10,7 @@ resource "awscc_lambda_microvm_image" "demo" {
   base_image_version         = var.base_image_version
   build_role_arn             = aws_iam_role.build.arn
   code_artifact              = { uri = "s3://${aws_s3_bucket.artifact.id}/${aws_s3_object.app.key}" }
-  cpu_configurations         = [{ architecture = "arm64" }]
+  cpu_configurations         = [{ architecture = "ARM_64" }]
   resources                  = [{ minimum_memory_in_mi_b = 512 }]
   additional_os_capabilities = []
   egress_network_connectors  = ["arn:aws:lambda:${var.region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS"]
