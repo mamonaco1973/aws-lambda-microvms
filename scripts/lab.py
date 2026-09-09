@@ -57,7 +57,6 @@ def main():
     args = parser.parse_args()
     if args.profile:
         os.environ["AWS_PROFILE"] = args.profile
-    os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
     if args.command == "package":
         return package()
     if args.command == "doctor":

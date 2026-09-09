@@ -25,7 +25,7 @@ if ! "$PYTHON" -c "import boto3; assert boto3.__version__ == '1.43.90'" 2>/dev/n
   "$PYTHON" -m pip install -r requirements.txt
 fi
 
-echo "NOTE: Checking the AWS CLI connection using profile $AWS_PROFILE."
+echo "NOTE: Checking the AWS CLI connection using your active AWS credentials."
 aws sts get-caller-identity --query Account --output text
 aws lambda-microvms run-microvm --generate-cli-skeleton input >/dev/null
 "$PYTHON" scripts/lab.py doctor

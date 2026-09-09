@@ -42,7 +42,7 @@ The ordinary AWS provider manages the supporting services. The AWSCC provider ma
 ## Prerequisites
 
 * Current AWS CLI with `aws lambda-microvms`, Terraform 1.7+, Python 3.10+ and Bash.
-* An authenticated AWS profile, defaulting to `default`, and MicroVM availability in `us-east-1`.
+* AWS credentials available through environment variables, an explicitly selected profile, or an instance/workload role, and MicroVM availability in `us-east-1`.
 * Deployment permissions for the project's S3, IAM, CloudWatch, Cognito, API Gateway, Lambda, SQS, DynamoDB, Cloud Control and MicroVM resources, including passing the build/controller roles.
 * For automatic browser validation: run `./setup_dev.sh` on Ubuntu/Debian to install Chromium. Windows uses installed Edge; `PLAYWRIGHT_CHANNEL` can select installed Chrome. The deployed app works in a normal modern browser.
 
@@ -68,7 +68,7 @@ cd aws-lambda-microvms
 
 `apply.sh` packages source, selects an AVAILABLE managed base image, applies `01-microvms`, then the AWS controller and frontend. It runs direct SDK validation and real Cognito/hosted API validation, then terminates test sessions. The browser check creates and deletes a temporary presenter with email delivery suppressed. Complete this before recording: image building is not part of the 10–15 minute interactive demo.
 
-The default profile and region can be overridden:
+The scripts use your existing AWS credentials without requiring a named profile. They honor `AWS_REGION` or `AWS_DEFAULT_REGION`, falling back to `us-east-1`. A profile is optional; select one only if you use named profiles:
 
 ```bash
 export AWS_PROFILE=your-profile

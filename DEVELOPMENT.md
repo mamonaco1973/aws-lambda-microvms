@@ -60,16 +60,15 @@ terraform version
 
 Use AWS CLI v2 with the `lambda-microvms` command and Terraform **1.7 or newer, below 2.0**. Install missing tools using the official [AWS CLI Linux instructions](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) and [Terraform installation instructions](https://developer.hashicorp.com/terraform/install). Terraform 1.7 is the minimum because the tests use mock providers.
 
-Configure AWS access on this box using your usual profile/SSO process. For an existing SSO profile:
+Use the AWS credentials already exported in your shell. No named profile is required. If an earlier instruction left a profile override in your environment, clear it before using environment credentials:
 
 ```bash
-export AWS_PROFILE=default
+unset AWS_PROFILE AWS_DEFAULT_PROFILE
 export AWS_DEFAULT_REGION=us-east-1
-aws sso login --profile "$AWS_PROFILE"
 aws sts get-caller-identity
 ```
 
-If the default profile has not been configured, run `aws configure sso --profile default` first. If your profile uses another authentication mechanism, authenticate that way and skip `aws sso login`. Do not copy credentials or the Windows `.lab` directory into the repository.
+The CLI, SDK and Terraform use the existing credential chain, including environment credentials and instance/workload roles. If you intentionally use a named SSO profile, set `AWS_PROFILE` to that profile and authenticate with your usual SSO command. Do not copy credentials or the Windows `.lab` directory into the repository.
 
 Install project dependencies and the test browser:
 

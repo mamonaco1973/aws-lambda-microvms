@@ -3,11 +3,11 @@
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
-export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+export AWS_DEFAULT_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 export AWS_REGION="$AWS_DEFAULT_REGION"
-export AWS_PROFILE="${AWS_PROFILE:-default}"
+# Preserve the caller's AWS credential chain: environment credentials, an
+# explicitly selected profile, or workload/instance credentials. Never force one.
 export AWS_PAGER=""
-export AWS_EC2_METADATA_DISABLED=true
 
 # Playwright's supported Linux browser builds target Ubuntu/Debian, not AL2023.
 LAB_OS_ID=""
