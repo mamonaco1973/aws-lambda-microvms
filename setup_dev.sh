@@ -7,7 +7,10 @@ if [[ ! -d .venv ]]; then
   source ./scripts/common.sh
 fi
 "$PYTHON" -m pip install -r requirements-dev.txt
-if [[ "$(uname -s)" == Linux ]]; then
+if [[ "$RUN_BROWSER_TESTS" == 0 ]]; then
+  echo "NOTE: Browser installation omitted. Amazon Linux can deploy and run SDK tests without a local browser."
+  echo "NOTE: Complete Cognito login and the recording walkthrough in your workstation browser after deployment."
+elif [[ "$(uname -s)" == Linux ]]; then
   "$PYTHON" -m playwright install --with-deps chromium
 else
   echo "NOTE: Browser tests use installed Edge on Windows; PLAYWRIGHT_CHANNEL overrides the selection."

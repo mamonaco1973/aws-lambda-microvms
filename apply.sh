@@ -26,5 +26,10 @@ terraform -chdir=03-webapp apply -auto-approve
 "$PYTHON" scripts/cloud.py resume
 echo "NOTE: Running build validation..."
 ./validate.sh
-./validate_web.sh
+if [[ "$RUN_BROWSER_TESTS" == 1 ]]; then
+  ./validate_web.sh
+else
+  echo "NOTE: Automated Cognito/browser acceptance was not run (RUN_BROWSER_TESTS=0)."
+  echo "NOTE: After creating your presenter, complete login and the browser steps in RECORDING.md."
+fi
 echo "NOTE: Build complete. Run ./create_user.sh once, then ./demo.sh"

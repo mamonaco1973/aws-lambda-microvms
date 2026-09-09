@@ -1,4 +1,4 @@
-# Push and Run on Ubuntu / Debian
+# Push and Run on Linux
 
 This repository contains source and Terraform lockfiles. Virtual environments, AWS credentials, CA bundles, downloaded tools, packages, test output, variable overrides and Terraform state are excluded. No AWS resources were created on the Windows workstation, so no existing Terraform state needs to be migrated.
 
@@ -17,6 +17,33 @@ git push origin main
 Root shell scripts have executable Git modes and LF line endings for a Linux clone.
 
 ## Prepare the Development Box
+
+### Amazon Linux 2023
+
+AL2023's system `python3` stays on 3.9. Install a newer interpreter alongside it; do not change the system symlink. From your existing clone:
+
+```bash
+git pull --ff-only
+sudo dnf install -y python3.12 python3.12-pip
+
+# If .venv was created with Python 3.9, preserve it under an unused backup name:
+mv .venv ".venv-old-python-$(date +%s)"
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+
+./setup_dev.sh
+./check_env.sh
+./test.sh
+./apply.sh
+./create_user.sh
+./demo.sh
+```
+
+For a fresh checkout with no `.venv`, skip the move command. AL2023 automatically defaults `RUN_BROWSER_TESTS=0`: it installs Python dependencies and runs the Python, Terraform and direct AWS checks, but does not attempt Playwright's Ubuntu/Debian browser installation. Automated browser acceptance is explicitly reported as omitted. Open the deployed HTTPS URL from your workstation and complete Cognito login and [RECORDING.md](RECORDING.md). An already configured compatible browser environment can opt in with `RUN_BROWSER_TESTS=1`.
+
+[AWS Python versions on AL2023](https://docs.aws.amazon.com/linux/al2023/ug/python.html) · [Playwright supported operating systems](https://playwright.dev/python/docs/intro#system-requirements)
+
+### Ubuntu / Debian
 
 Use Ubuntu 22.04/24.04 or a current compatible Debian release with Python 3.10+. Install Git and Python tooling if needed:
 

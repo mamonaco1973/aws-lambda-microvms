@@ -9,6 +9,17 @@ export AWS_PROFILE="${AWS_PROFILE:-default}"
 export AWS_PAGER=""
 export AWS_EC2_METADATA_DISABLED=true
 
+# Playwright's supported Linux browser builds target Ubuntu/Debian, not AL2023.
+LAB_OS_ID=""
+if [[ -r /etc/os-release ]]; then
+  LAB_OS_ID="$(. /etc/os-release; printf '%s' "$ID")"
+fi
+if [[ "$LAB_OS_ID" == amzn ]]; then
+  export RUN_BROWSER_TESTS="${RUN_BROWSER_TESTS:-0}"
+else
+  export RUN_BROWSER_TESTS="${RUN_BROWSER_TESTS:-1}"
+fi
+
 if [[ -x .venv/bin/python ]]; then
   PYTHON="$PROJECT_DIR/.venv/bin/python"
 elif [[ -x .venv/Scripts/python.exe ]]; then

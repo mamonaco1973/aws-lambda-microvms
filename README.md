@@ -50,6 +50,8 @@ No workstation Docker installation or local HTTP server is required. AWS builds 
 
 ## Build the Code
 
+**Amazon Linux 2023:** use the [AL2023 setup commands](DEVELOPMENT.md#amazon-linux-2023). Its system Python 3.9 is too old; use a separate Python 3.12 environment. Automated browser tests are omitted on AL2023, with a visible notice; direct AWS validation still runs. Complete Cognito login and the browser demonstration from your normal workstation.
+
 On the Ubuntu/Debian development box, after cloning:
 
 ```bash

@@ -9,7 +9,11 @@ fi
 "$PYTHON" -m pytest -q tests
 "$PYTHON" scripts/lab.py package
 "$PYTHON" scripts/cloud.py package
-"$PYTHON" tests/browser_smoke.py
+if [[ "$RUN_BROWSER_TESTS" == 1 ]]; then
+  "$PYTHON" tests/browser_smoke.py
+else
+  echo "NOTE: Browser fixture tests omitted (RUN_BROWSER_TESTS=0); Python and Terraform checks still run."
+fi
 ./validate.sh --local
 for phase in 01-microvms 02-lambdas 03-webapp; do
   terraform -chdir="$phase" init -input=false
