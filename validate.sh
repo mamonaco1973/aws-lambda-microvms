@@ -2,6 +2,9 @@
 # Verify memory, file isolation, authentication, suspension and fresh launch.
 # --local runs application checks only and clearly reports omitted AWS checks.
 source "$(dirname "$0")/scripts/common.sh"
+if [[ "${1:-}" != "--local" ]]; then
+  "$PYTHON" scripts/cloud.py url
+fi
 echo "NOTE: Running Lambda MicroVM demo validation..."
 if [[ "${1:-}" != "--local" ]]; then
   "$PYTHON" scripts/cloud.py quiesce
