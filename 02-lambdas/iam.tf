@@ -16,6 +16,16 @@ resource "aws_iam_role_policy" "this" {
       { Effect = "Allow", Action = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"], Resource = aws_dynamodb_table.state.arn },
       { Effect = "Allow", Action = each.key == "api" ? ["sqs:SendMessage"] : ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], Resource = aws_sqs_queue.operations.arn },
       { Effect = "Allow", Action = each.key == "api" ? ["lambda:GetMicrovm"] : ["lambda:RunMicrovm", "lambda:GetMicrovm", "lambda:SuspendMicrovm", "lambda:TerminateMicrovm", "lambda:CreateMicrovmAuthToken"], Resource = var.image_arn }
-    ], each.key == "worker" ? [{ Effect = "Allow", Action = ["lambda:ListMicrovms"], Resource = "*" }] : [])
+      ], each.key == "worker" ? [
+      { Effect = "Allow", Action = ["lambda:ListMicrovms"], Resource = "*" },
+      {
+        Effect = "Allow"
+        Action = ["lambda:PassNetworkConnector"]
+        Resource = [
+          "arn:aws:lambda:${var.region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS",
+          "arn:aws:lambda:${var.region}:aws:network-connector:aws-network-connector:ALL_INGRESS"
+        ]
+      }
+    ] : [])
   })
 }
