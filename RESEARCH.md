@@ -34,4 +34,4 @@ Lambda tenant isolation also supports tenant-specific execution environments. **
 
 ## Terraform
 
-The image uses the official `hashicorp/awscc` resource `awscc_lambda_microvm_image`; ordinary supporting services use `hashicorp/aws`. Cloud Control is the provider's API, not a CloudFormation stack deployment. The image's active version is passed into the controller's environment. [Terraform image resource](https://registry.terraform.io/providers/hashicorp/awscc/latest/docs/resources/lambda_microvm_image)
+The image uses `hashicorp/aws`'s `aws_cloudcontrolapi_resource` with explicit JSON properties. This preserves the required empty `AdditionalOsCapabilities` and `EnvironmentVariables` arrays; the AWSCC resource drops empty sets during serialization. Cloud Control is the provider's API, not a CloudFormation stack deployment. The image's active version is passed into the controller's environment. [Terraform Cloud Control resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudcontrolapi_resource), [AWSCC serialization implementation](https://github.com/hashicorp/terraform-provider-awscc/blob/main/internal/generic/translate.go)

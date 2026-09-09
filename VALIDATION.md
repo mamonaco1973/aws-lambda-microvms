@@ -1,6 +1,8 @@
 # Validation Record
 
-Checked September 9, 2026 on this Windows workstation. **No AWS infrastructure has been deployed by this project yet.**
+Checked September 9, 2026 on this Windows workstation. The user's Linux deployment has reached image creation, but AWS rejected the image request during model validation. A successful live image build is still unverified.
+
+The image now uses `aws_cloudcontrolapi_resource` with JSON properties because AWSCC omits the required empty arrays. Terraform assertions cover both arrays and the `ARM_64` enum. Formatting was checked; the new provider-backed assertions have not run on this workstation because of the provider handshake failure described below.
 
 | Check | Result |
 |---|---|

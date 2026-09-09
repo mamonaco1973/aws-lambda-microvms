@@ -1,6 +1,6 @@
 # ================================================================================
 # Provider Configuration
-# AWS manages supporting resources. AWSCC manages the image through Cloud Control.
+# AWS manages supporting resources and the image through Cloud Control.
 # No CloudFormation template or stack is deployed.
 # ================================================================================
 terraform {
@@ -9,10 +9,6 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"
-    }
-    awscc = {
-      source  = "hashicorp/awscc"
-      version = "~> 1.100"
     }
     random = {
       source  = "hashicorp/random"
@@ -26,10 +22,6 @@ provider "aws" {
   default_tags {
     tags = { Project = "aws-lambda-microvms", ManagedBy = "Terraform" }
   }
-}
-
-provider "awscc" {
-  region = var.region
 }
 
 data "aws_caller_identity" "current" {}

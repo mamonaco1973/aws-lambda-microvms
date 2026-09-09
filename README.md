@@ -37,7 +37,7 @@ test.sh            Run tests, package artifacts and validate Terraform
 setup_dev.sh       Install Python dependencies and Linux headless Chromium
 ```
 
-The ordinary AWS provider manages the supporting services. The AWSCC provider manages `awscc_lambda_microvm_image` directly in Terraform state through Cloud Control. No CloudFormation stack, template or provisioner is used.
+The AWS provider manages the supporting services and the image. The image uses `aws_cloudcontrolapi_resource` with explicit JSON properties so required empty arrays reach Cloud Control intact. No CloudFormation stack, template or provisioner is used.
 
 ## Prerequisites
 

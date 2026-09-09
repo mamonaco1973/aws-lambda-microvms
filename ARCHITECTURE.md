@@ -22,7 +22,7 @@ flowchart LR
 
 ## Infrastructure ownership
 
-* `01-microvms`: private source bucket, build role/logs, initialized MicroVM image. Terraform's AWSCC provider owns the image directly; no CloudFormation stack or template is created.
+* `01-microvms`: private source bucket, build role/logs, initialized MicroVM image. The AWS provider's `aws_cloudcontrolapi_resource` owns the image directly with a JSON property model that preserves required empty arrays; no CloudFormation stack or template is created.
 * `02-lambdas`: Cognito, static-asset bucket, HTTP API, API/worker Lambdas, FIFO queue and dead-letter queue, DynamoDB, roles and one-day logs.
 * `03-webapp`: frontend files and public deployment configuration uploaded with Terraform S3 objects.
 
