@@ -54,6 +54,10 @@ Install project dependencies and the test browser:
 
 `setup_dev.sh` creates `.venv`, installs pinned dependencies and downloads headless Chromium. Playwright may request sudo to install Ubuntu/Debian browser libraries. No desktop, display server, Node.js installation or local frontend web server is needed. The deployed app can be viewed from your normal workstation browser.
 
+If Python 3.10+ is installed under a versioned name, select it when creating the environment, for example `PROJECT_PYTHON=python3.12 ./setup_dev.sh`. An existing `.venv` takes precedence. If it was created with an older interpreter, first move it aside (for example `mv .venv .venv-old-python`, using an unused destination) and then run setup with the supported interpreter. Upgrading pip does not change the Python version inside an existing virtual environment.
+
+For `No matching distribution found for boto3==1.43.90`, check `.venv/bin/python --version` first. This release requires Python 3.10+. If that requirement is satisfied, check whether your configured package index/mirror has the pinned release; do not downgrade boto3 without verifying the required MicroVM service model.
+
 `test.sh` runs Python/controller tests, browser fixtures, application acceptance and Terraform validation/mock tests. It creates no AWS infrastructure. Terraform downloads the Linux providers automatically; committed lockfiles retain provider versions. Local `.venv` and `dist` are recreated instead of copying Windows binaries.
 
 ## Deploy, Sign In and Demonstrate

@@ -13,6 +13,7 @@ for command_name in aws terraform "$PYTHON"; do
   fi
   echo "NOTE: $command_name is found in the current PATH."
 done
+"$PYTHON" --version
 
 if [[ ! -d .venv ]]; then
   echo "NOTE: Creating the project's Python virtual environment..."
