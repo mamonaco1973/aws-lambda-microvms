@@ -3,14 +3,15 @@
 # validate.sh — Suspend/Resume Validation for every runtime
 # ------------------------------------------------------------------------------
 # Purpose:
-#   For each MicroVM image (Python and Node):
+#   For each MicroVM image (Python, Node and Bash):
 #     - Launch a MicroVM from it.
 #     - Seed live interpreter state: a variable, a generator, a file.
+#       (Bash has no generator, so a counter plus a function stands in.)
 #     - Suspend it and confirm AWS reports SUSPENDED.
 #     - Resume it with an ordinary HTTPS request and prove the state survived.
 #     - Terminate the validation session.
 #
-#   Both runtimes are asserted against the SAME expected output, which is the
+#   Every runtime is asserted against the SAME expected output, which is the
 #   claim this demo makes: the platform behaves identically, the language does
 #   not matter.
 #
@@ -127,6 +128,12 @@ cursor = (function* () { for (let n = 0; n < 1000; n++) yield n * n; })();
 cursor.next();
 fs.writeFileSync("note.txt", "validated");
 console.log("seeded");' ;;
+    bash) printf '%s' 'balance=41
+cursor=0
+next_square() { square=$((cursor * cursor)); cursor=$((cursor + 1)); }
+next_square
+printf %s validated > note.txt
+echo seeded' ;;
   esac
 }
 
@@ -136,6 +143,11 @@ resume_code() {
 print(balance, next(cursor), Path("note.txt").read_text())' ;;
     node) printf '%s' 'balance += 1;
 console.log(balance, cursor.next().value, fs.readFileSync("note.txt", "utf8"));' ;;
+    # A function definition surviving the checkpoint is what next_square proves
+    # here; the counter it advances is the generator stand-in.
+    bash) printf '%s' 'balance=$((balance + 1))
+next_square
+echo "${balance} ${square} $(cat note.txt)"' ;;
   esac
 }
 

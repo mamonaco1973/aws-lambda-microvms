@@ -1,13 +1,14 @@
 locals {
   name = "microvms"
 
-  # The two runtimes this demo builds. Everything below is derived per runtime,
-  # so adding a third (Ruby, R, Julia) means adding one line here plus a
-  # directory containing a Dockerfile and a server that speaks the hook
-  # contract -- nothing else in the project needs to know.
+  # The runtimes this demo builds. Everything below is derived per runtime, so
+  # adding another (Ruby, R, Julia) means adding one line here plus a directory
+  # containing a Dockerfile and a server that speaks the hook contract --
+  # nothing else in the project needs to know.
   runtimes = {
     python = "Python 3 persistent interpreter"
     node   = "Node.js persistent interpreter"
+    bash   = "Bash persistent shell"
   }
 
   # Source changes produce a new image name, so an old snapshot built from

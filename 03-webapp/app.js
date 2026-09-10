@@ -9,12 +9,14 @@ let busy = false;
 let active;                     // which runtime tab is showing
 const states = {};              // last known status per runtime
 
-const RUNTIME_LABELS = { python: 'Python', node: 'Node.js' };
+const RUNTIME_LABELS = { python: 'Python', node: 'Node.js', bash: 'Bash' };
 
 const PRESET_LABELS = {
   seed: '1 - Seed state',
   continue: '2 - Continue state',
   inspect: 'Inspect session',
+  // Offered only by runtimes that define it; buildPanel skips absent keys.
+  background: 'Background job (bash)',
   failure: 'Raise an error',
   kill: 'Kill this interpreter',
 };

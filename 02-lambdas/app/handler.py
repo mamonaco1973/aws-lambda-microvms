@@ -1,10 +1,10 @@
-"""HTTP API that drives the MicroVM lifecycle for two runtimes, synchronously.
+"""HTTP API that drives the MicroVM lifecycle for every runtime, synchronously.
 
 MicroVM launch and resume run from a pre-initialized Firecracker snapshot in a
 few seconds, so every action completes well inside the API Gateway integration
 timeout. That is why there is no queue, no worker and no job table.
 
-Two images are launched from the same code path -- one Python, one Node -- which
+Every image is launched from the same code path -- Python, Node and Bash -- which
 is the demonstration: the platform is identical, the runtime is yours.
 
 DynamoDB holds only identifiers and the last application sample. Interpreter
@@ -26,7 +26,7 @@ from presets import PRESETS
 ACTIONS = {"launch", "suspend", "wake", "sample", "execute", "terminate"}
 
 REGION = os.environ["AWS_REGION"]
-IMAGES = json.loads(os.environ["IMAGES"])          # {"python": {...}, "node": {...}}
+IMAGES = json.loads(os.environ["IMAGES"])          # {"python": {...}, "node": {...}, ...}
 RUNTIMES = tuple(sorted(IMAGES))
 BASE_IMAGE_ARN = os.environ["BASE_IMAGE_ARN"]
 BASE_IMAGE_VERSION = os.environ["BASE_IMAGE_VERSION"]

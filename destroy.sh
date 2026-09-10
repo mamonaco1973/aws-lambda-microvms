@@ -65,6 +65,12 @@ if [[ ! -f dist/node-app.zip ]]; then
   (cd 01-microvms/node && zip -q -X -r ../../dist/node-app.zip Dockerfile server.js worker.js)
 fi
 
+if [[ ! -f dist/bash-app.zip ]]; then
+  echo "NOTE: Rebuilding dist/bash-app.zip so the configuration can be evaluated..."
+  mkdir -p dist
+  (cd 01-microvms/bash && zip -q -X -r ../../dist/bash-app.zip Dockerfile server.py worker.sh)
+fi
+
 if [[ ! -f dist/controller.zip ]]; then
   echo "NOTE: Rebuilding a placeholder dist/controller.zip for evaluation..."
   rm -rf dist/build && mkdir -p dist/build
