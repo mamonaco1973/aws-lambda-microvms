@@ -13,8 +13,7 @@ const RUNTIME_LABELS = { python: 'Python', node: 'Node.js', bash: 'Bash' };
 
 const PRESET_LABELS = {
   seed: '1 - Seed state',
-  continue: '2 - Continue state',
-  inspect: 'Inspect session',
+  check: '2 - Check state',
   // Offered only by runtimes that define it; buildPanel skips absent keys.
   background: 'Background job (bash)',
   failure: 'Raise an error',

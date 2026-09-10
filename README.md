@@ -143,10 +143,22 @@ world-readable from the S3 bucket, so anything shipped in it would be public.
 > between a stranger and an endpoint that executes code and launches billable
 > VMs. Run `./destroy.sh` when you are finished.
 
-In the browser: pick a tab, **Launch**, run **Seed state**, **Suspend**, then
-**Wake via HTTPS** and run **Continue state**. Expect balance **42**, generator
-value **1**, and the file intact. Do it in the other tabs and watch the
-identical sequence in a different language.
+In the browser: pick a tab, **Launch**, run **Seed state** — it assigns a few
+ordinary variables and writes a file — then **Suspend**, then **Wake via HTTPS**
+and run **Check state**. The same values print back:
+
+```
+user  = mike
+count = 7
+items = alpha beta gamma
+file  = written before the suspend
+rows  = 200000
+```
+
+Nothing was saved and nothing was reloaded in between, so the only explanation
+is that it is the same process. `rows` comes from the dataset built during the
+image build, so build-time memory survived too. Do it in the other tabs and
+watch the identical output in a different language.
 
 On the Bash tab, **Background job** is worth a second pass: run it, suspend,
 wake, and run it again to see the same child process still alive.
