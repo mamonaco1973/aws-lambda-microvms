@@ -47,6 +47,59 @@ wait_for_state() {
   exit 1
 }
 
+# ------------------------------------------------------------------------------
+# Helper: authenticated request to the MicroVM endpoint, with resume retries
+# ------------------------------------------------------------------------------
+# Never use curl -f here. Under set -e it aborts the whole script on any HTTP
+# error, the EXIT trap terminates the VM, and the failure is reported as
+# silence. Capture the status instead and say what happened.
+#
+# Lambda answers 502 while a suspended MicroVM is still being restored, so a
+# resume-triggering request has to tolerate it rather than treat it as fatal.
+vm_request() {
+  local method="$1" path="$2" data="${3:-}"
+  local attempt response status body
+
+  for ((attempt = 1; attempt <= 10; attempt++)); do
+    if [[ -n "${data}" ]]; then
+      response=$(curl -s -w $'\n%{http_code}' --max-time 60 -X "${method}" \
+        "https://${ENDPOINT}${path}" \
+        -H "X-aws-proxy-auth: ${TOKEN}" -H "X-aws-proxy-port: 8080" \
+        -H "Content-Type: application/json" -d "${data}") || response=$'\n000'
+    else
+      response=$(curl -s -w $'\n%{http_code}' --max-time 60 \
+        "https://${ENDPOINT}${path}" \
+        -H "X-aws-proxy-auth: ${TOKEN}" -H "X-aws-proxy-port: 8080") || response=$'\n000'
+    fi
+
+    status="${response##*$'\n'}"
+    body="${response%$'\n'*}"
+
+    if [[ "${status}" == "200" ]]; then
+      printf '%s' "${body}"
+      return 0
+    fi
+
+    # 000 is a curl-level failure (timeout, connection reset), which a resume in
+    # progress can also produce. Both are worth another attempt.
+    if [[ "${status}" == "502" || "${status}" == "503" || "${status}" == "504" || "${status}" == "000" ]]; then
+      echo "NOTE: ${path} returned ${status}; MicroVM still resuming, retry ${attempt}/10..." >&2
+      sleep 3
+      continue
+    fi
+
+    echo "ERROR: ${method} ${path} returned HTTP ${status}" >&2
+    echo "ERROR: Response body: ${body}" >&2
+    return 1
+  done
+
+  echo "ERROR: ${method} ${path} never succeeded (last status ${status})." >&2
+  echo "ERROR: Response body: ${body}" >&2
+  echo "ERROR: MicroVM state is now: $(aws lambda-microvms get-microvm \
+    --microvm-identifier "${VM_ID}" --query state --output text 2>/dev/null || echo unknown)" >&2
+  return 1
+}
+
 # Terminate the validation MicroVM no matter how the script exits, so a failed
 # check can never leave a billable session running.
 VM_ID=""
@@ -96,12 +149,13 @@ PYTHON
 
 SEED=$(jq -n --arg code "${SEED_CODE}" '{code: $code}')
 
-curl -sf -X POST "https://${ENDPOINT}/execute" \
-  -H "X-aws-proxy-auth: ${TOKEN}" -H "X-aws-proxy-port: 8080" \
-  -H "Content-Type: application/json" -d "${SEED}" | jq -e '.ok == true' >/dev/null
+SEEDED=$(vm_request POST /execute "${SEED}") || exit 1
+echo "${SEEDED}" | jq -e '.ok == true' >/dev/null || {
+  echo "ERROR: Seed cell failed: $(echo "${SEEDED}" | jq -r '.stdout')"
+  exit 1
+}
 
-NONCE_BEFORE=$(curl -sf "https://${ENDPOINT}/state" \
-  -H "X-aws-proxy-auth: ${TOKEN}" -H "X-aws-proxy-port: 8080" | jq -r '.session_nonce')
+NONCE_BEFORE=$(vm_request GET /state | jq -r '.session_nonce')
 echo "NOTE: Session nonce before suspend: ${NONCE_BEFORE}"
 
 # ------------------------------------------------------------------------------
@@ -123,10 +177,10 @@ balance += 1
 print(balance, next(cursor), Path("note.txt").read_text())
 PYTHON
 
-RESUMED=$(curl -sf -X POST "https://${ENDPOINT}/execute" \
-  -H "X-aws-proxy-auth: ${TOKEN}" -H "X-aws-proxy-port: 8080" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg code "${RESUME_CODE}" '{code: $code}')")
+RESUMED=$(vm_request POST /execute "$(jq -n --arg code "${RESUME_CODE}" '{code: $code}')") || {
+  echo "ERROR: The MicroVM did not resume on incoming traffic."
+  exit 1
+}
 
 echo "${RESUMED}" | jq -e '.ok == true' >/dev/null || {
   echo "ERROR: Cell failed after resume: $(echo "${RESUMED}" | jq -r '.stdout')"
@@ -140,8 +194,7 @@ if [[ "${OUTPUT}" != "42 1 Alice was here" ]]; then
 fi
 echo "NOTE: Memory, generator position and disk all survived: ${OUTPUT}"
 
-NONCE_AFTER=$(curl -sf "https://${ENDPOINT}/state" \
-  -H "X-aws-proxy-auth: ${TOKEN}" -H "X-aws-proxy-port: 8080" | jq -r '.session_nonce')
+NONCE_AFTER=$(vm_request GET /state | jq -r '.session_nonce')
 if [[ "${NONCE_BEFORE}" != "${NONCE_AFTER}" ]]; then
   echo "ERROR: Session nonce changed; this was a fresh VM, not a resumed one."
   exit 1
