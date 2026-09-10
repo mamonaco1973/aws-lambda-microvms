@@ -1,12 +1,14 @@
 .terraform
 *.tfstate
 *.tfstate.backup
+*.tfplan
 *.terraform.lock.hcl
 *.terraform.*
 *.tfvars
 *.tfvars.json
 *.pem
 *.pub
+*.key
 *.zip
 
 # Build artifacts: the MicroVM source zip and the controller deployment package.
@@ -15,15 +17,28 @@ dist/
 # Generated at deploy time from the 02-lambdas outputs.
 03-webapp/config.json
 
-# Python virtual environments. Nothing here needs one -- apply.sh installs the
-# controller's dependencies straight into dist/build with pip --target -- but
-# earlier revisions of this project did, and a leftover .venv from one of those
-# will otherwise be committed wholesale.
+# Runtime artifacts written by earlier revisions of this project. The code that
+# produced them is gone, but a stale copy in a checkout must not be committed --
+# both carry account identifiers and neither is reproducible.
+.lab/
+test-results/
+
+# Python virtual environments and caches. Nothing here needs a venv: apply.sh
+# installs the controller's dependencies straight into dist/build with
+# pip --target. Earlier revisions did need one, and a leftover .venv would
+# otherwise be committed wholesale.
 .venv/
 .venv-*/
 __pycache__/
+.pytest_cache/
 *.pyc
 
 # Ad-hoc probe and survey output.
 *-survey.txt
 probe-*.txt
+
+# Local environment overrides and crash dumps.
+.env
+.env.*
+crash.log
+crash.*.log
