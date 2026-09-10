@@ -48,17 +48,29 @@ rm -rf dist && mkdir -p dist
 # The Lambda runtime's bundled SDK predates lambda-microvms, so a current boto3
 # is vendored into the deployment package.
 #
-# Resolve wheels for the Lambda runtime's Python, not the build host's. Without
-# --python-version, pip filters by the local interpreter: AL2023 ships Python
-# 3.9, and boto3 needs 3.10+, so every usable release silently disappears.
-# All of these dependencies are pure-Python (py3-none-any) wheels.
+# These wheels target the Lambda runtime, not the build host. AL2023 ships
+# Python 3.9 while boto3 needs 3.10+, and older pip applies Requires-Python
+# against the running interpreter, so the gate must be disabled explicitly.
+# Every dependency here is a pure-Python (py3-none-any) wheel, so the host's
+# interpreter and platform genuinely do not matter.
 # ------------------------------------------------------------------------------
 echo "NOTE: Packaging the controller Lambda..."
 
 rm -rf dist/build && mkdir -p dist/build
 python3 -m pip install --quiet --disable-pip-version-check --no-compile \
   --only-binary=:all: --python-version "${LAMBDA_PYTHON}" \
-  --target dist/build "boto3>=1.43.0"
+  --ignore-requires-python --target dist/build "boto3>=1.43.0"
+
+# Confirm the vendored SDK actually carries the MicroVM service model. Skipping
+# Requires-Python means a too-old boto3 would otherwise ship silently and the
+# controller would fail at runtime with "Unknown service: lambda-microvms".
+if [[ ! -d dist/build/botocore/data/lambda-microvms ]]; then
+  echo "ERROR: Vendored boto3 has no lambda-microvms service model."
+  echo "ERROR: Check the pip index for a boto3 release that supports MicroVMs."
+  exit 1
+fi
+echo "NOTE: Vendored boto3 includes the lambda-microvms service model."
+
 cp 02-lambdas/app/*.py dist/build/
 (cd dist/build && zip -q -X -r ../controller.zip . -x '*/__pycache__/*')
 
