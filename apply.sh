@@ -59,7 +59,8 @@ echo "NOTE: Packaging the controller Lambda..."
 rm -rf dist/build && mkdir -p dist/build
 python3 -m pip install --quiet --disable-pip-version-check --no-compile \
   --only-binary=:all: --python-version "${LAMBDA_PYTHON}" \
-  --ignore-requires-python --target dist/build "boto3>=1.43.0"
+  --ignore-requires-python --no-warn-conflicts \
+  --target dist/build "boto3>=1.43.0"
 
 # Confirm the vendored SDK actually carries the MicroVM service model. Skipping
 # Requires-Python means a too-old boto3 would otherwise ship silently and the
@@ -77,18 +78,23 @@ cp 02-lambdas/app/*.py dist/build/
 # ------------------------------------------------------------------------------
 # SELECT THE MANAGED BASE IMAGE
 # ------------------------------------------------------------------------------
-# Base image versions age out through DEPRECATED/EXPIRING, so resolve an
-# AVAILABLE one at deploy time rather than pinning a number in source.
+# BaseImageVersion is required by AWS::Lambda::MicrovmImage, and versions age out
+# through DEPRECATED/EXPIRING, so resolve the newest at deploy time rather than
+# pinning a number in source. ListManagedMicrovmImageVersions returns only
+# createdAt/imageArn/imageVersion -- there is no state field to filter on.
 # ------------------------------------------------------------------------------
-echo "NOTE: Selecting an AVAILABLE managed base image version..."
+echo "NOTE: Selecting the newest managed base image version..."
 
 BASE_IMAGE_ARN="arn:aws:lambda:${AWS_DEFAULT_REGION}:aws:microvm-image:al2023-1"
 BASE_IMAGE_VERSION=$(aws lambda-microvms list-managed-microvm-image-versions \
   --image-identifier "${BASE_IMAGE_ARN}" \
-  --query "items[?state=='AVAILABLE'] | [0].imageVersion" --output text)
+  --query "sort_by(items, &createdAt)[-1].imageVersion" --output text)
 
 if [[ -z "${BASE_IMAGE_VERSION}" || "${BASE_IMAGE_VERSION}" == "None" ]]; then
-  echo "ERROR: No AVAILABLE managed base image version found in ${AWS_DEFAULT_REGION}."
+  echo "ERROR: No managed base image version found for ${BASE_IMAGE_ARN}."
+  echo "ERROR: Raw response follows so the field names can be checked:"
+  aws lambda-microvms list-managed-microvm-image-versions \
+    --image-identifier "${BASE_IMAGE_ARN}" || true
   exit 1
 fi
 echo "NOTE: Using base image version ${BASE_IMAGE_VERSION}"
