@@ -5,10 +5,13 @@ values, same printed labels, same output. Run them side by side and the only
 difference on screen is the syntax -- which is the point, since the platform
 underneath is identical.
 
-The demonstration is deliberately dull. "Seed state" assigns a few ordinary
-variables and writes a file; "Check state" prints them back after a suspend and
-a resume. Nothing is saved and nothing is reloaded in between, so the only
-explanation for the values still being there is that it is the same process.
+The demonstration is deliberately dull, and the order matters. "Check state"
+runs first on a freshly launched MicroVM and finds `user`, `visits` and `items`
+already set, because they were assigned during the image build and live in the
+snapshot. "Update state" then mutates them. Suspend, resume, check again and
+the mutations are still there; terminate, launch and check again and they are
+gone while the build-time values are back. Same cell, three different answers,
+which is the whole distinction between image memory and session memory.
 
 These are conveniences, not a contract. The editor is free-form and the
 controller executes whatever it is sent.
@@ -16,16 +19,17 @@ controller executes whatever it is sent.
 
 PRESETS = {
     "python": {
-        "seed": """user = 'mike'
-count = 7
-items = ['alpha', 'beta', 'gamma']
-Path('note.txt').write_text('written before the suspend', encoding='utf-8')
-print('Variables set. Now suspend the MicroVM.')""",
+        "check": """print('user   =', user)
+print('visits =', visits)
+print('items  =', ' '.join(items))
+print('file   =', Path('note.txt').read_text(encoding='utf-8')
+      if Path('note.txt').is_file() else '(none)')""",
 
-        "check": """print('user  =', user)
-print('count =', count)
-print('items =', ' '.join(items))
-print('file  =', Path('note.txt').read_text(encoding='utf-8'))""",
+        "update": """user = 'mike'
+visits += 1
+items.append('item' + str(visits))
+Path('note.txt').write_text('updated ' + str(visits) + ' time(s)', encoding='utf-8')
+print('State updated. Check it, or suspend and come back to it.')""",
 
         "failure": """raise RuntimeError('A submitted cell failed; the other MicroVMs are unaffected')""",
 
@@ -34,16 +38,17 @@ os._exit(17)""",
     },
 
     "node": {
-        "seed": """user = 'mike';
-count = 7;
-items = ['alpha', 'beta', 'gamma'];
-fs.writeFileSync('note.txt', 'written before the suspend');
-console.log('Variables set. Now suspend the MicroVM.');""",
+        "check": """console.log('user   =', user);
+console.log('visits =', visits);
+console.log('items  =', items.join(' '));
+console.log('file   =', fs.existsSync('note.txt')
+  ? fs.readFileSync('note.txt', 'utf8') : '(none)');""",
 
-        "check": """console.log('user  =', user);
-console.log('count =', count);
-console.log('items =', items.join(' '));
-console.log('file  =', fs.readFileSync('note.txt', 'utf8'));""",
+        "update": """user = 'mike';
+visits += 1;
+items.push('item' + visits);
+fs.writeFileSync('note.txt', 'updated ' + visits + ' time(s)');
+console.log('State updated. Check it, or suspend and come back to it.');""",
 
         "failure": """throw new Error('A submitted cell failed; the other MicroVMs are unaffected');""",
 
@@ -51,17 +56,17 @@ console.log('file  =', fs.readFileSync('note.txt', 'utf8'));""",
     },
 
     "bash": {
-        "seed": """user=mike
-count=7
-items=(alpha beta gamma)
-echo 'written before the suspend' > note.txt
-echo 'Variables set. Now suspend the MicroVM.'""",
-
-        "check": """echo "user  = ${user}"
-echo "count = ${count}"
-echo "items = ${items[*]}"
-echo "file  = $(cat note.txt)"
+        "check": """echo "user   = ${user}"
+echo "visits = ${visits}"
+echo "items  = ${items[*]}"
+echo "file   = $(cat note.txt 2>/dev/null || echo '(none)')"
 """,
+
+        "update": """user=mike
+visits=$((visits + 1))
+items+=("item${visits}")
+echo "updated ${visits} time(s)" > note.txt
+echo 'State updated. Check it, or suspend and come back to it.'""",
 
         # Bash only. A live child process surviving a memory checkpoint is the
         # most direct evidence in the project that the VM really was frozen.

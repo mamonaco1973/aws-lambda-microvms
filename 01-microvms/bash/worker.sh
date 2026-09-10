@@ -46,10 +46,16 @@ _mv_now_ms() {
 # ------------------------------------------------------------------------------
 # Readiness handshake
 # ------------------------------------------------------------------------------
-# Anything done before this line becomes part of the image snapshot, because the
-# server blocks on it and only then does /ready pass. There is deliberately
-# nothing here to preload -- but this is where it would go.
+# Anything set before this line becomes part of the image snapshot, because the
+# server blocks on it and only then does /ready pass. The starting state is
+# assigned here for that reason: a launched MicroVM already holds it, without
+# running a single cell. Data only -- never identity, which would be cloned
+# into every VM.
 # ------------------------------------------------------------------------------
+user=default
+visits=0
+items=(alpha beta)
+
 jq -nc --argjson pid "$$" '{ready: true, pid: $pid}'
 
 # ------------------------------------------------------------------------------

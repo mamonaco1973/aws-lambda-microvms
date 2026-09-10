@@ -38,17 +38,21 @@ def main():
     """Announce readiness, then serve cells from stdin.
 
     Anything done before the readiness line is printed becomes part of the image
-    snapshot, because the /ready hook does not pass until this finishes. There
-    is deliberately nothing here to preload -- but this is where it would go.
+    snapshot, because the /ready hook does not pass until this finishes. The
+    starting namespace is built here for that reason: a launched MicroVM has
+    those values in memory before any cell runs.
 
     The protocol is one JSON object per line in each direction. Line-delimited
     JSON over pipes avoids any dependency and keeps the interpreter isolated in
     its own process, so killing a hung cell cannot take down the HTTP server.
     """
-    # The session namespace. Assignments made by submitted code land here and
-    # outlive the cell; Path is seeded so a cell can touch the filesystem
-    # without an import.
-    namespace = {"__name__": "__session__", "Path": Path}
+    # Set before the readiness handshake, so these end up in the image snapshot:
+    # every MicroVM launched from this image starts with them already in memory,
+    # without running a single cell. Data only -- never identity. Anything
+    # unique baked in here is cloned into every VM, which is exactly what
+    # image_marker in the panel exists to demonstrate.
+    namespace = {"__name__": "__session__", "Path": Path,
+                 "user": "default", "visits": 0, "items": ["alpha", "beta"]}
 
     # Nothing is preloaded, so this returns immediately -- but it still has to
     # be printed, because the server blocks on it and only then does /ready

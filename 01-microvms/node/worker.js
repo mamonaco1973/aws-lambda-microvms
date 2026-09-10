@@ -21,9 +21,16 @@ const readline = require('readline');
 const OUTPUT_LIMIT = 16000;
 
 function main() {
-  // The persistent scope. Same role as the Python worker's namespace dict:
-  // assignments made by submitted code land here and outlive the cell.
-  const context = vm.createContext({ fs });
+  // Built before the readiness line is sent, so these end up in the image
+  // snapshot: every MicroVM starts with them already in memory, without running
+  // a single cell. Data only -- never identity. Anything unique baked in here
+  // is cloned into every VM, which is what image_marker demonstrates.
+  const context = vm.createContext({
+    fs,
+    user: 'default',
+    visits: 0,
+    items: ['alpha', 'beta'],
+  });
 
   // Nothing is preloaded, so this returns immediately -- but it still has to be
   // sent, because the server blocks on it and only then does /ready pass. That

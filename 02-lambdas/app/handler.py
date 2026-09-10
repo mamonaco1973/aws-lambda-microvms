@@ -23,7 +23,7 @@ from botocore.config import Config
 
 from presets import PRESETS
 
-ACTIONS = {"launch", "suspend", "wake", "sample", "execute", "terminate"}
+ACTIONS = {"launch", "suspend", "wake", "execute", "terminate"}
 
 REGION = os.environ["AWS_REGION"]
 IMAGES = json.loads(os.environ["IMAGES"])          # {"python": {...}, "node": {...}, ...}
@@ -270,9 +270,9 @@ def act(client, runtime, action, code):
         forget(runtime)
         return {"runtime": runtime, "id": session["id"], "state": "TERMINATED"}
     else:
-        # wake, sample and execute all send real traffic, which is what
-        # auto-resumes a suspended VM. Capturing the state first is what lets
-        # the panel show that the request itself did the waking.
+        # Both wake and execute send real traffic, which is what auto-resumes a
+        # suspended VM. Capturing the state first is what lets the panel show
+        # that the request itself did the waking.
         before = state_of(client, session["id"])
         result = call(client, session, "/execute", {"code": code}) if action == "execute" else None
         session["snapshot"] = call(client, session, "/state")

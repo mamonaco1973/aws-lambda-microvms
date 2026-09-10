@@ -43,6 +43,7 @@ Several rows have **no EC2 equivalent at all**:
 
 | Concept | MicroVMs | EC2 |
 |---|---|---|
+| Build recipe | Dockerfile, built remotely by AWS | Packer template / EC2 Image Builder |
 | Image | MicroVM image (memory **and** disk) | AMI (disk only) |
 | Base image | `al2023-1`, exactly one, versioned | *no equivalent — you don't pick the host OS* |
 | Sizing | Baseline memory, vCPU derived, bursts 4x | Instance type from a catalog |
@@ -105,7 +106,7 @@ Runs one lifecycle operation synchronously.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runtime` | string | Yes | `python`, `node` or `bash`. |
-| `action` | string | Yes | `launch`, `suspend`, `wake`, `sample`, `execute`, `terminate`. |
+| `action` | string | Yes | `launch`, `suspend`, `wake`, `execute`, `terminate`. |
 | `code` | string | No | Source for `execute`. Max 16 KB. |
 
 ## Deploy the Build
@@ -141,20 +142,21 @@ world-readable from the S3 bucket, so anything shipped in it would be public.
 > between a stranger and an endpoint that executes code and launches billable
 > VMs. Run `./destroy.sh` when you are finished.
 
-In the browser: pick a tab, **Launch**, run **Seed state** — it assigns a few
-ordinary variables and writes a file — then **Suspend**, then **Wake via HTTPS**
-and run **Check state**. The same values print back:
+In the browser, pick a tab and **Launch**. Then run the same cell,
+**Check state**, at four points — it never changes, and the answer does:
 
-```
-user  = mike
-count = 7
-items = alpha beta gamma
-file  = written before the suspend
-```
+| Step | Output | Why |
+|---|---|---|
+| Launch, then **Check state** | `user = default`, `visits = 0`, `items = alpha beta`, `file = (none)` | These were set during the **image build** and live in the snapshot. No cell created them. |
+| **Update state**, then check | `user = mike`, `visits = 1`, `items = alpha beta item1` | Ordinary mutation of state that was already there. |
+| **Suspend**, **Wake via HTTPS**, then check | unchanged | Nothing was saved or reloaded, so it is the same process. |
+| **Terminate**, **Launch**, then check | back to `default` / `0` / `alpha beta` | A new VM is a fresh clone of the image. Session memory is gone; image memory is not. |
 
-Nothing was saved and nothing was reloaded in between, so the only explanation
-is that it is the same process. Do it in the other tabs and watch the identical
-output in a different language.
+That last row is the point: **image memory** is baked in at build and identical
+in every VM, while **session memory** belongs to one MicroVM and dies with it.
+Run `Update state` repeatedly and `visits` keeps climbing — until you terminate.
+
+Do it in the other tabs and watch the identical output in a different language.
 
 On the Bash tab, **Background job** is worth a second pass: run it, suspend,
 wake, and run it again to see the same child process still alive.

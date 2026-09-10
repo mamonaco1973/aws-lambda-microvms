@@ -12,8 +12,8 @@ const states = {};              // last known status per runtime
 const RUNTIME_LABELS = { python: 'Python', node: 'Node.js', bash: 'Bash' };
 
 const PRESET_LABELS = {
-  seed: '1 - Seed state',
-  check: '2 - Check state',
+  check: 'Check state',
+  update: 'Update state',
   // Offered only by runtimes that define it; buildPanel skips absent keys.
   background: 'Background job (bash)',
   failure: 'Raise an error',
@@ -29,7 +29,11 @@ const PRESET_LABELS = {
 // what it actually configured, and this file says what that corresponds to.
 // -----------------------------------------------------------------------------
 const COMPARISON = [
-  ['Image', s => `${s.image_name} v${s.image_version}`, 'AMI'],
+  // The row people get wrong. A Dockerfile here is a build recipe, not a
+  // runtime: nothing is ever `docker run`, there is no registry, and the
+  // artifact is a VM snapshot. Packer is the honest comparison.
+  ['Build recipe', () => 'Dockerfile (built remotely)', 'Packer template / EC2 Image Builder'],
+  ['Image', s => `${s.image_name} v${s.image_version}`, 'AMI (disk only — this adds memory)'],
   ['Base image', s => `al2023-1 v${s.base_image_version}`, null],
   ['Architecture', s => s.architecture, 'Graviton instance family'],
   ['Baseline', s => `${s.baseline_mib} MiB / ${s.baseline_vcpu} vCPU`, 'Instance type'],
@@ -119,7 +123,6 @@ function buildPanel(runtime) {
       <button data-action="launch" class="primary">Launch</button>
       <button data-action="suspend">Suspend</button>
       <button data-action="wake">Wake via HTTPS</button>
-      <button data-action="sample">Sample</button>
       <button data-action="terminate">Terminate</button>
     </div>
     <div class="stats">
@@ -159,8 +162,8 @@ function buildPanel(runtime) {
     select.append(option);
   }
   const editor = panel.querySelector('textarea');
-  select.value = 'seed';
-  editor.value = config.presets[runtime].seed;
+  select.value = 'check';
+  editor.value = config.presets[runtime].check;
   select.onchange = () => { editor.value = config.presets[runtime][select.value]; };
 
   for (const button of panel.querySelectorAll('.buttons button, .editor button')) {
@@ -237,8 +240,26 @@ function render(runtime, data, sampled = false) {
 // -----------------------------------------------------------------------------
 // Actions complete synchronously; MicroVM endpoint tokens never leave AWS.
 // -----------------------------------------------------------------------------
+function isLive(runtime) {
+  const state = states[runtime]?.state;
+  return Boolean(state) && state !== 'TERMINATED' && state !== 'TERMINATING';
+}
+
 async function action(runtime, operation) {
   if (busy) return;
+
+  // Checked here rather than left to the controller's 400, so the answer lands
+  // in the output pane the user is already looking at instead of the log.
+  if (operation === 'execute' && !isLive(runtime)) {
+    const label = RUNTIME_LABELS[runtime] ?? runtime;
+    document.querySelector(`.panel[data-runtime="${runtime}"] pre`).textContent =
+      `No ${label} MicroVM is running.
+
+Press Launch to start one, then run this cell again.`;
+    log(`${label} - launch the MicroVM before running a cell`, true);
+    return;
+  }
+
   busy = true;
   for (const button of document.querySelectorAll('button')) button.disabled = true;
   log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${operation} requested`);
@@ -252,7 +273,7 @@ async function action(runtime, operation) {
         code: document.querySelector(`.panel[data-runtime="${runtime}"] textarea`).value,
       }),
     });
-    render(runtime, data, ['launch', 'sample', 'execute', 'wake'].includes(operation));
+    render(runtime, data, ['launch', 'execute', 'wake'].includes(operation));
     const before = data.state_before_request ? ` (before the request: ${data.state_before_request})` : '';
     log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${data.state}${before}`);
   } catch (error) {
