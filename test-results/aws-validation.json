@@ -1,0 +1,105 @@
+{
+  "mode": "AWS LIVE",
+  "checks": [
+    "Per-session identity generated after image snapshot",
+    "Both interpreters have the same initialized dataset",
+    "Both VMs inherited the same pre-snapshot image marker (Alice=cb0cf442-5e51-4e4a-941b-67fe1c4d2a5a, Bob=cb0cf442-5e51-4e4a-941b-67fe1c4d2a5a; see launch_snapshots and image in the evidence report)",
+    "Alice creates memory, generator and file state",
+    "Bob cannot observe Alice's application variables or file",
+    "Missing token, wrong port and other tenant token receive HTTP 403",
+    "AWS control plane confirms SUSPENDED",
+    "Bob keeps running while Alice is suspended",
+    "Control-plane polling does not wake Alice",
+    "HTTPS traffic automatically resumes Alice",
+    "Session identity and interpreter process survive resume",
+    "Background execution was frozen, not merely hidden in the UI",
+    "Memory-only balance and live generator continue without replay",
+    "Alice's disk state remains unchanged by Bob",
+    "AWS automatically suspends Alice after endpoint inactivity",
+    "The automatically suspended session resumes with the same identity",
+    "Killing Bob's interpreter leaves Alice usable",
+    "Terminate then launch produces a fresh session, unlike resume",
+    "Fresh launch receives a new session identity"
+  ],
+  "measurements": {
+    "launch_snapshots": {
+      "alice": {
+        "tenant": "alice",
+        "microvm_id": "microvm-1e3fa9be-9761-3297-afba-1dc22bcc7f9e",
+        "session_nonce": "4fbaf3bb-7f4d-45ee-a18c-30c769566bba",
+        "image_marker": "cb0cf442-5e51-4e4a-941b-67fe1c4d2a5a",
+        "server_pid": 1,
+        "worker_pid": 7,
+        "ticks": 11,
+        "initialization": {
+          "ready": true,
+          "rows": 200000,
+          "init_ms": 130.22,
+          "dataset_sha256": "8d53f5bc002715da83f0198da851bd5fed39b7a19a8ebf15866b2e0b53df8201",
+          "pid": 7
+        },
+        "events": [
+          {
+            "hook": "ready",
+            "wall_time": 1788976745.5110133,
+            "ticks": 10
+          },
+          {
+            "hook": "run",
+            "wall_time": 1788978499.8348858,
+            "ticks": 11
+          }
+        ],
+        "file": null,
+        "worker_alive": true,
+        "round_trip_ms": 307.9
+      },
+      "bob": {
+        "tenant": "bob",
+        "microvm_id": "microvm-3f1d097e-dec6-319f-8a6e-b27b08f5b2bf",
+        "session_nonce": "fb594809-f2d7-4570-aea3-605205c7c7a5",
+        "image_marker": "cb0cf442-5e51-4e4a-941b-67fe1c4d2a5a",
+        "server_pid": 1,
+        "worker_pid": 7,
+        "ticks": 11,
+        "initialization": {
+          "ready": true,
+          "rows": 200000,
+          "init_ms": 130.22,
+          "dataset_sha256": "8d53f5bc002715da83f0198da851bd5fed39b7a19a8ebf15866b2e0b53df8201",
+          "pid": 7
+        },
+        "events": [
+          {
+            "hook": "ready",
+            "wall_time": 1788976745.5110133,
+            "ticks": 10
+          },
+          {
+            "hook": "run",
+            "wall_time": 1788978502.132582,
+            "ticks": 11
+          }
+        ],
+        "file": null,
+        "worker_alive": true,
+        "round_trip_ms": 303.5
+      }
+    },
+    "image": {
+      "image_arn": "arn:aws:lambda:us-east-1:824622998597:microvm-image:microvms-18ej2k-73c3e8469a",
+      "image_version": "1.0"
+    },
+    "launch_ms": {
+      "alice": 2568.1,
+      "bob": 2491.0
+    },
+    "resume_http_ms": 766.3,
+    "suspended_wall_seconds": 9.90957260131836,
+    "suspended_tick_delta": 1,
+    "idle_suspend_observed_after_seconds": 67.3
+  },
+  "started_at": 1788978497.9317174,
+  "passed": true,
+  "cleanup": "completed"
+}
