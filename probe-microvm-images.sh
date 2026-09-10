@@ -74,14 +74,19 @@ else
     aws lambda-microvms list-managed-microvm-image-versions \
       --image-identifier "${arn}" 2>/dev/null \
       | jq -r '
-          # Epoch may be seconds or milliseconds. Normalize once, before both
-          # the sort and the format, so ordering cannot disagree with the dates.
-          def epoch: if . > 100000000000 then . / 1000 else . end;
+          # The API reference documents createdAt as a number, but the CLI
+          # renders it as an ISO 8601 string. Accept either, and normalize to a
+          # string before both the sort and the display so ordering and dates
+          # can never disagree. ISO 8601 sorts correctly as text.
+          def when:
+            if type == "string" then .
+            elif . > 100000000000 then . / 1000 | todate
+            else todate end;
           .items
-          | sort_by(.createdAt | epoch)
+          | sort_by(.createdAt | when)
           | .[]
           | "    " + (.imageVersion | tostring)
-                   + "  created " + (.createdAt | epoch | todate)
+                   + "  created " + (.createdAt | when)
         ' || echo "    (none returned)"
   done
 fi
@@ -94,12 +99,23 @@ fi
 # ------------------------------------------------------------------------------
 section "MicroVM images owned by this account"
 
-OWN=$(aws lambda-microvms list-microvm-images 2>/dev/null || true)
+# Capture stderr too. Reporting "none" when the call actually failed, or when
+# the response simply uses a key other than .items, would be a lie in exactly
+# the direction that wastes the most time.
+OWN=$(aws lambda-microvms list-microvm-images 2>&1) || OWN=""
 
-if [[ -z "${OWN}" ]] || [[ "$(echo "${OWN}" | jq -r '.items | length' 2>/dev/null || echo 0)" == "0" ]]; then
-  echo "  None. Run ./apply.sh to build one."
+if [[ -z "${OWN}" ]]; then
+  echo "  ERROR: the call failed and produced no output."
+  echo "  Re-run 'aws lambda-microvms list-microvm-images' directly to see why."
 else
-  echo "${OWN}"
+  COUNT=$(echo "${OWN}" | jq -r '.items | length' 2>/dev/null || echo "unparsed")
+  case "${COUNT}" in
+    0)         echo "  None in this Region. Run ./apply.sh to build one." ;;
+    unparsed)  echo "  Response did not parse as {items: [...]}; showing it raw:"
+               echo "${OWN}" ;;
+    *)         echo "  ${COUNT} image(s):"
+               echo "${OWN}" ;;
+  esac
 fi
 
 section "Probe complete"
