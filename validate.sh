@@ -21,9 +21,14 @@ set -euo pipefail
 export AWS_DEFAULT_REGION="us-east-1"
 cd "$(dirname "$0")"
 
-IMAGE_ARN=$(terraform -chdir=01-microvms output -raw image_arn)
-WEBSITE_URL=$(terraform -chdir=02-lambdas output -raw web_url)
-API_URL=$(terraform -chdir=02-lambdas output -raw api_url)
+IMAGE_ARN=$(terraform   -chdir=01-microvms output -raw image_arn 2>/dev/null || true)
+APP_URL=$(terraform     -chdir=02-lambdas  output -raw web_url   2>/dev/null || true)
+API_BASE=$(terraform    -chdir=02-lambdas  output -raw api_url   2>/dev/null || true)
+
+if [ -z "${IMAGE_ARN}" ] || [ -z "${APP_URL}" ] || [ -z "${API_BASE}" ]; then
+  echo "ERROR: Could not read Terraform outputs. Run ./apply.sh first."
+  exit 1
+fi
 
 # ------------------------------------------------------------------------------
 # Helper: poll until the MicroVM reaches the requested lifecycle state
@@ -153,7 +158,7 @@ if [[ "${STATUS}" != "403" ]]; then
 fi
 echo "NOTE: MicroVM endpoint rejects requests with no auth token (403)."
 
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${API_URL}/api/status")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${API_BASE}/api/status")
 if [[ "${STATUS}" != "401" ]]; then
   echo "ERROR: Controller API returned ${STATUS} without a token; expected 401."
   exit 1
@@ -161,16 +166,15 @@ fi
 echo "NOTE: Controller API rejects requests with no Cognito access token (401)."
 
 # ------------------------------------------------------------------------------
-# Final Quick Start Output
+# Deployment Summary
 # ------------------------------------------------------------------------------
-echo ""
-echo "============================================================================"
-echo "Lambda MicroVMs Quick Start - Validation Output"
-echo "============================================================================"
-echo ""
-echo "NOTE: Test Web URL:    ${WEBSITE_URL}"
-echo "NOTE: API Base URI:    ${API_URL}"
-echo ""
 echo "NOTE: Create a presenter with ./create_user.sh, then sign in with Cognito."
-echo "NOTE: Validation complete."
+
+echo ""
+echo "================================================================================="
+echo "  Lambda MicroVMs — Deployment validated!"
+echo "================================================================================="
+echo "  App : ${APP_URL}"
+echo "  API : ${API_BASE}"
+echo "================================================================================="
 echo ""
