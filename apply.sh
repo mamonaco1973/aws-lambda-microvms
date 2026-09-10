@@ -23,6 +23,9 @@ export AWS_DEFAULT_REGION="us-east-1"
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Must match the runtime in 02-lambdas/lambda.tf; used to resolve vendored wheels.
+LAMBDA_PYTHON="3.14"
+
 # ------------------------------------------------------------------------------
 # ENVIRONMENT PRE-CHECK
 # ------------------------------------------------------------------------------
@@ -44,12 +47,18 @@ rm -rf dist && mkdir -p dist
 # ------------------------------------------------------------------------------
 # The Lambda runtime's bundled SDK predates lambda-microvms, so a current boto3
 # is vendored into the deployment package.
+#
+# Resolve wheels for the Lambda runtime's Python, not the build host's. Without
+# --python-version, pip filters by the local interpreter: AL2023 ships Python
+# 3.9, and boto3 needs 3.10+, so every usable release silently disappears.
+# All of these dependencies are pure-Python (py3-none-any) wheels.
 # ------------------------------------------------------------------------------
 echo "NOTE: Packaging the controller Lambda..."
 
 rm -rf dist/build && mkdir -p dist/build
 python3 -m pip install --quiet --disable-pip-version-check --no-compile \
-  --only-binary=:all: --target dist/build "boto3>=1.43.90"
+  --only-binary=:all: --python-version "${LAMBDA_PYTHON}" \
+  --target dist/build "boto3>=1.43.0"
 cp 02-lambdas/app/*.py dist/build/
 (cd dist/build && zip -q -X -r ../controller.zip . -x '*/__pycache__/*')
 
