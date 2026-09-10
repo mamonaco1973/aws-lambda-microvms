@@ -64,22 +64,66 @@ if [[ ! -f dist/controller.zip ]]; then
 fi
 
 # ------------------------------------------------------------------------------
+# RECONSTRUCT MISSING VARIABLE FILES
+# ------------------------------------------------------------------------------
+# apply.sh writes these and they are gitignored, so a deployment applied before
+# they existed -- or a checkout that lost them -- has none. Rebuild rather than
+# refuse: refusing strands infrastructure whose MicroVMs this script has already
+# terminated, and forces a full image rebuild purely to permit teardown.
+#
+# Only `region` has to be exact, because it selects the provider endpoint.
+# Terraform deletes what state records, not what configuration describes, so the
+# remaining values only need to evaluate. Real values are used where an earlier
+# phase's outputs still hold them.
+# ------------------------------------------------------------------------------
+output_or() {
+  terraform -chdir="$1" output -raw "$2" 2>/dev/null || printf '%s' "$3"
+}
+
+if [[ -f 01-microvms/terraform.tfstate && ! -f 01-microvms/deployment.tfvars.json ]]; then
+  echo "NOTE: Reconstructing 01-microvms/deployment.tfvars.json..."
+
+  # BaseImageVersion is an input, not an output, so recover it from the resource
+  # recorded in state rather than re-querying the service.
+  base_version=$(terraform -chdir=01-microvms show -json 2>/dev/null \
+    | jq -r 'first(.values.root_module.resources[]?
+             | select(.type == "aws_cloudcontrolapi_resource")
+             | .values.desired_state | fromjson | .BaseImageVersion) // empty' \
+    2>/dev/null || true)
+  [[ -z "${base_version}" ]] && base_version="1"
+
+  jq -n --arg region "${AWS_DEFAULT_REGION}" --arg version "${base_version}" \
+    '{region: $region, base_image_version: $version}' \
+    > 01-microvms/deployment.tfvars.json
+fi
+
+if [[ -f 02-lambdas/terraform.tfstate && ! -f 02-lambdas/deployment.tfvars.json ]]; then
+  echo "NOTE: Reconstructing 02-lambdas/deployment.tfvars.json..."
+  jq -n --arg region "${AWS_DEFAULT_REGION}" \
+        --arg arn "$(output_or 01-microvms image_arn unused-for-destroy)" \
+        --arg version "$(output_or 01-microvms image_version 1)" \
+    '{region: $region, name: "microvms", image_arn: $arn, image_version: $version}' \
+    > 02-lambdas/deployment.tfvars.json
+fi
+
+if [[ -f 03-webapp/terraform.tfstate && ! -f 03-webapp/deployment.tfvars.json ]]; then
+  echo "NOTE: Reconstructing 03-webapp/deployment.tfvars.json..."
+  jq -n --arg region "${AWS_DEFAULT_REGION}" \
+        --arg bucket "$(output_or 02-lambdas web_bucket_name unused-for-destroy)" \
+    '{region: $region, web_bucket_name: $bucket}' \
+    > 03-webapp/deployment.tfvars.json
+fi
+
+# ------------------------------------------------------------------------------
 # DESTROY TERRAFORM RESOURCES IN REVERSE ORDER
 # ------------------------------------------------------------------------------
-# Each phase reuses the variable file apply.sh wrote. -input=false makes a
-# missing value fail with a clear error instead of silently prompting.
+# -input=false so a genuinely unresolvable value fails loudly instead of
+# stopping teardown at an interactive prompt.
 # ------------------------------------------------------------------------------
 for phase in 03-webapp 02-lambdas 01-microvms; do
   if [[ ! -f "${phase}/terraform.tfstate" ]]; then
     echo "NOTE: ${phase} has no local state; nothing was deployed from this checkout."
     continue
-  fi
-
-  if [[ ! -f "${phase}/deployment.tfvars.json" ]]; then
-    echo "ERROR: ${phase}/deployment.tfvars.json is missing."
-    echo "ERROR: It is written by apply.sh and is gitignored, so destroy must run"
-    echo "ERROR: from the same checkout that applied. Re-run ./apply.sh to rebuild it."
-    exit 1
   fi
 
   echo "NOTE: Destroying ${phase}..."

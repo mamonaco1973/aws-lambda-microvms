@@ -145,6 +145,27 @@ the MicroVM endpoint rejects unauthenticated requests with 403 and the
 controller API rejects them with 401. The validation session is terminated on
 exit, including on failure.
 
+## Enumerate the Available Images
+
+```bash
+./probe-microvm-images.sh
+```
+
+Read-only. Lists the AWS-managed base images with every published version, then
+any images this account has built on top of them. Nothing is created, modified
+or deleted, and it is safe to run before `apply.sh` — an account with no images
+of its own simply says so.
+
+This is the AMI-catalog equivalent, and the contrast is the point. EC2 answers
+the same question with `describe-images`, which takes `--owners` and `--filters`
+across tens of thousands of AMIs. `ListManagedMicrovmImages` accepts only
+`maxResults` and `nextToken`, because there is no catalog to search: AWS
+publishes the base image, and your `Dockerfile` is the difference.
+
+Base image versions age out through `DEPRECATED`, `EXPIRING` and `EXPIRED`, so
+what this prints today is not necessarily what you can still build on next
+quarter.
+
 ## Destroy the Build
 
 ```bash
