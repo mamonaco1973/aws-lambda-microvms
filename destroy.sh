@@ -16,9 +16,12 @@ cd "$(dirname "$0")"
 # controller call are still found and terminated.
 # ------------------------------------------------------------------------------
 if [[ -f 01-microvms/terraform.tfstate ]]; then
-  IMAGE_ARN=$(terraform -chdir=01-microvms output -raw image_arn 2>/dev/null || echo "")
+  # Every runtime's image, not just one: a session left behind on either blocks
+  # that image's deletion.
+  IMAGE_ARNS=$(terraform -chdir=01-microvms output -json images 2>/dev/null \
+    | jq -r '.[]?.image_arn' 2>/dev/null || echo "")
 
-  if [[ -n "${IMAGE_ARN}" ]]; then
+  for IMAGE_ARN in ${IMAGE_ARNS}; do
     echo "NOTE: Terminating MicroVM sessions for ${IMAGE_ARN}..."
 
     VM_IDS=$(aws lambda-microvms list-microvms --image-identifier "${IMAGE_ARN}" \
@@ -38,8 +41,8 @@ if [[ -f 01-microvms/terraform.tfstate ]]; then
         sleep 2
       done
     done
-    echo "NOTE: All MicroVM sessions terminated."
-  fi
+    echo "NOTE: All sessions for ${IMAGE_ARN##*:} terminated."
+  done
 fi
 
 # ------------------------------------------------------------------------------
@@ -50,10 +53,16 @@ fi
 # directory therefore breaks teardown outright. Only existence matters here, so
 # rebuild cheaply and skip the pip download the real controller package needs.
 # ------------------------------------------------------------------------------
-if [[ ! -f dist/app.zip ]]; then
-  echo "NOTE: Rebuilding dist/app.zip so the configuration can be evaluated..."
+if [[ ! -f dist/python-app.zip ]]; then
+  echo "NOTE: Rebuilding dist/python-app.zip so the configuration can be evaluated..."
   mkdir -p dist
-  (cd 01-microvms/app && zip -q -X -r ../../dist/app.zip Dockerfile server.py worker.py)
+  (cd 01-microvms/python && zip -q -X -r ../../dist/python-app.zip Dockerfile server.py worker.py)
+fi
+
+if [[ ! -f dist/node-app.zip ]]; then
+  echo "NOTE: Rebuilding dist/node-app.zip so the configuration can be evaluated..."
+  mkdir -p dist
+  (cd 01-microvms/node && zip -q -X -r ../../dist/node-app.zip Dockerfile server.js worker.js)
 fi
 
 if [[ ! -f dist/controller.zip ]]; then
@@ -99,10 +108,19 @@ fi
 
 if [[ -f 02-lambdas/terraform.tfstate && ! -f 02-lambdas/deployment.tfvars.json ]]; then
   echo "NOTE: Reconstructing 02-lambdas/deployment.tfvars.json..."
+
+  # The images map comes back whole from the phase below, which is still
+  # standing at this point. If it cannot be read, a single placeholder entry is
+  # enough: destroy deletes what state records, not what configuration says.
+  images=$(terraform -chdir=01-microvms output -json images 2>/dev/null || true)
+  if [[ -z "${images}" || "${images}" == "null" ]]; then
+    images='{"python":{"image_arn":"unused-for-destroy","image_version":"1","image_name":"unused-for-destroy"}}'
+  fi
+
   jq -n --arg region "${AWS_DEFAULT_REGION}" \
-        --arg arn "$(output_or 01-microvms image_arn unused-for-destroy)" \
-        --arg version "$(output_or 01-microvms image_version 1)" \
-    '{region: $region, name: "microvms", image_arn: $arn, image_version: $version}' \
+        --arg base "$(output_or 01-microvms base_image_version 1)" \
+        --argjson images "${images}" \
+    '{region: $region, name: "microvms", base_image_version: $base, images: $images}' \
     > 02-lambdas/deployment.tfvars.json
 fi
 

@@ -28,11 +28,12 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "artifact" {
   }
 }
 
-# source_hash forces a re-upload when the packaged application changes, which is
-# what makes a code edit actually reach the next image build.
+# One artifact per runtime. source_hash forces a re-upload when a packaged
+# application changes, which is what makes a code edit reach the next build.
 resource "aws_s3_object" "app" {
+  for_each    = local.runtimes
   bucket      = aws_s3_bucket.artifact.id
-  key         = "${local.image_name}.zip"
-  source      = "${path.module}/../dist/app.zip"
-  source_hash = filesha256("${path.module}/../dist/app.zip")
+  key         = "${local.image_names[each.key]}.zip"
+  source      = "${path.module}/../dist/${each.key}-app.zip"
+  source_hash = filesha256("${path.module}/../dist/${each.key}-app.zip")
 }

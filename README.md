@@ -1,100 +1,99 @@
-# AWS Lambda MicroVMs — Stateful Python Sessions
+# AWS Lambda MicroVMs — Python and Node.js, Same Platform
 
 This project demonstrates **AWS Lambda MicroVMs**, the serverless compute
 primitive AWS launched in June 2026 that runs isolated Firecracker VMs for up to
-eight hours and — the interesting part — **preserves live process state across
-suspend and resume**.
+eight hours and **preserves live process state across suspend and resume**.
 
-Two Python sessions, **Alice** and **Bob**, each get their own MicroVM launched
-from a single pre-initialized image. You create variables in Alice's interpreter,
-advance a generator and write a file, then suspend her VM while Bob keeps
-working. When Alice resumes, her interpreter is exactly where she left it — no
-replayed cells, no reconstructed namespace.
+It runs **two MicroVMs from two images** — one Python, one Node.js. You create a
+variable, advance a generator and write a file, then suspend the VM. When it
+resumes, the interpreter is exactly where you left it: no replayed code, no
+reconstructed namespace, no deserialization.
 
-It uses **Terraform**, **Python**, and **Cognito Hosted UI** to build a
-browser-driven demo where every lifecycle operation runs through an
-authenticated API — no EC2 instances, no containers to manage, and no local
-Docker daemon.
+The two runtimes are configured identically. Every launch parameter, connector,
+policy and limit is the same; only the image differs. That is the point.
 
 ![webapp](webapp.png)
 
 Key capabilities demonstrated:
 
-1. **Stateful Suspend and Resume** – Memory, generator position, open file
-   handles and background threads survive an explicit suspend and an
-   HTTPS-triggered resume.
-2. **VM-Level Tenant Isolation** – Alice and Bob get separate kernels,
-   interpreters, filesystems and endpoints from one shared image snapshot.
-3. **Two Authentication Boundaries** – Cognito PKCE authenticates the presenter
-   to the API; a separate per-MicroVM JWE token authorizes traffic to each VM.
+1. **Stateful Suspend and Resume** – Memory, generator position, open files and
+   background threads survive an explicit suspend and an HTTPS-triggered resume.
+2. **Runtime Independence** – The same platform configuration runs a Python
+   interpreter and a Node.js interpreter, and `validate.sh` asserts both against
+   byte-identical expected output.
+3. **VM-Level Isolation** – Each session gets its own kernel, filesystem and
+   endpoint from a shared image snapshot.
 4. **Snapshot-Safe Identity** – A session nonce is generated in the `/run`
-   lifecycle hook, proving why identity must not be baked into a snapshot.
-5. **Infrastructure as Code (IaC)** – Terraform provisions the MicroVM image,
-   Cognito, API Gateway, Lambda, DynamoDB and S3 web hosting automatically.
+   lifecycle hook, demonstrating why identity must not be baked into a snapshot.
+5. **Infrastructure as Code (IaC)** – Terraform provisions both MicroVM images,
+   API Gateway, Lambda, DynamoDB and S3 web hosting.
 
 ![AWS Lambda MicroVMs Diagram](aws-lambda-microvms.png)
 
-## Build Process
+## MicroVM Concepts, in EC2 Terms
 
-The build runs in three Terraform phases, orchestrated by `apply.sh`:
+The application's main panel is a configuration table that reports how each
+MicroVM was actually launched, alongside the EC2 concept it corresponds to.
+Several rows have **no EC2 equivalent at all**:
+
+| Concept | MicroVMs | EC2 |
+|---|---|---|
+| Image | MicroVM image (memory **and** disk) | AMI (disk only) |
+| Base image | `al2023-1`, exactly one, versioned | *no equivalent — you don't pick the host OS* |
+| Sizing | Baseline memory, vCPU derived, bursts 4x | Instance type from a catalog |
+| Boot payload | `runHookPayload` (16 KB) | User data (16 KB) |
+| Init | `/run` lifecycle hook | cloud-init |
+| Inbound | Network connectors | Security group rules |
+| Credentials | Execution role (none here) | IAM instance profile |
+| Access | Per-VM HTTPS endpoint + scoped token | Public IP + SSH keypair |
+| Idle behaviour | Auto-suspend, auto-resume on traffic | *no equivalent* |
+| Lifetime | Hard ceiling, 8 hours maximum | *no equivalent — instances run forever* |
+
+Run `./probe-microvm-images.sh` to see the base image catalog: **one image,
+a handful of versions**, against `describe-images` returning tens of thousands
+of AMIs.
+
+## Build Process
 
 | Phase | Directory | What it creates |
 |-------|-----------|-----------------|
-| 1 | `01-microvms` | Private source bucket, build role and logs, the MicroVM image |
-| 2 | `02-lambdas` | Cognito, API Gateway, controller Lambda, DynamoDB, web bucket |
-| 3 | `03-webapp` | Static HTML/JS assets and the generated `config.json` |
+| 1 | `01-microvms` | Private source bucket, build role, **two** MicroVM images |
+| 2 | `02-lambdas` | API Gateway, controller Lambda, DynamoDB, web bucket |
+| 3 | `03-webapp` | Static SPA and the generated `config.json` |
 
-Lambda builds the ARM64 image remotely from a zip containing a `Dockerfile` and
-the session server, so **no local Docker daemon is required**. Image builds take
-several minutes; MicroVM launches take one to three seconds.
+`01-microvms/python/` and `01-microvms/node/` each hold a Dockerfile and a
+server implementing the same HTTP contract. Adding a third runtime means adding
+one line to `01-microvms/locals.tf` and a directory — nothing else needs to know.
 
 ## API Endpoints
 
-The controller exposes three routes through **API Gateway (HTTP API)**, all
-protected by a Cognito JWT authorizer requiring the `microvms/control` scope.
+Three routes on an **API Gateway HTTP API**. Every request must carry the demo
+passphrase in an `X-Demo-Passphrase` header.
 
 ### GET /api/config
 
-Returns the Python code presets shown in the browser's editor dropdown.
+Returns the runtime list, each runtime's code presets, and each runtime's
+configuration spec — the data behind the comparison table.
 
 ### GET /api/status
 
-Returns the current lifecycle state of each launched session.
-
-**Example Response:**
-```json
-{
-  "alice": {
-    "id": "mvm-01234567-abcd-ef01-2345-6789abcdef01",
-    "state": "SUSPENDED",
-    "observation": "Cached application data; AWS lifecycle state is current"
-  }
-}
-```
-
-This route deliberately calls **`GetMicrovm` only**. Sending traffic to the
-MicroVM endpoint would auto-resume a suspended VM and destroy the very
-behavior the demo exists to show.
+Current lifecycle state of each launched session. Calls **`GetMicrovm` only**:
+sending traffic to a MicroVM endpoint would auto-resume a suspended VM and
+destroy the behavior the demo exists to show.
 
 ### POST /api/action
 
-Runs one lifecycle operation and returns the result synchronously.
+Runs one lifecycle operation synchronously.
 
-**Request Body (JSON):**
 ```json
-{
-  "tenant": "alice",
-  "action": "execute",
-  "code": "balance += 1\nprint(balance)"
-}
+{ "runtime": "node", "action": "execute", "code": "balance += 1;" }
 ```
 
-**Parameters:**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `tenant` | string | Yes | Which session to act on (`alice` or `bob`). |
-| `action` | string | Yes | One of `launch`, `suspend`, `wake`, `sample`, `execute`, `auth-check`, `terminate`. |
-| `code` | string | No | Python source for the `execute` action. Max 16 KB. |
+| `runtime` | string | Yes | `python` or `node`. |
+| `action` | string | Yes | `launch`, `suspend`, `wake`, `sample`, `execute`, `terminate`. |
+| `code` | string | No | Source for `execute`. Max 16 KB. |
 
 ## Deploy the Build
 
@@ -102,36 +101,37 @@ Runs one lifecycle operation and returns the result synchronously.
 ./apply.sh
 ```
 
-`apply.sh` resolves the newest managed base image version at deploy time,
-packages both zips, applies each phase in order, and finishes by running
-`validate.sh`. The application URL is printed in the validation summary.
+Resolves the newest managed base image version, packages both runtime zips plus
+the controller, applies each phase, and finishes by running `validate.sh` — which
+prints the application URL **and the demo passphrase**.
 
-## Sign Up and Sign In
+## Sign In
 
-There is no user-creation script. The Cognito user pool allows **self-service
-registration**, so accounts are created from the browser:
+There are no user accounts. The application is gated by a single shared
+passphrase, generated by Terraform and printed at the end of `validate.sh`:
 
-1. Open the **App** URL printed by `validate.sh`.
-2. Click **Sign in with Cognito** to reach the Hosted UI.
-3. Choose **Sign up**, enter your email address and a password.
-4. Cognito emails a verification code. Enter it to confirm the account.
-5. You are returned to the application, signed in.
+```
+  App        : https://…s3.us-east-1.amazonaws.com/index.html
+  API        : https://….execute-api.us-east-1.amazonaws.com
+  Passphrase : cheerful-mallard-summit
+```
 
-Password policy is **at least 12 characters, with an uppercase letter, a
-lowercase letter and a number**. Symbols are allowed but not required.
+Open the app, type the passphrase, and you are in. It is stored in
+`sessionStorage`, so it dies with the browser tab.
 
-The pool uses Cognito's built-in email delivery, which is capped at roughly
-**50 messages per day** and arrives from a `no-reply@verificationemail.com`
-address — fine for a demo, and the reason to check a spam folder if the code
-does not appear. Verification is one-time; later sign-ins go straight through.
+The passphrase is deliberately **not** written into `config.json` — that file is
+world-readable from the S3 bucket, so anything shipped in it would be public.
 
-Every signed-in user shares control of the same two sessions. This is a shared
-two-slot lab, not a multi-tenant application.
+> **This is a demo, not a product.** There is no Cognito, no user pool and no
+> per-user isolation, because five moving parts of authentication taught nothing
+> about MicroVMs. The passphrase plus API Gateway throttling is all that stands
+> between a stranger and an endpoint that executes code and launches billable
+> VMs. Run `./destroy.sh` when you are finished.
 
-Once signed in: launch Alice and Bob, run Alice's **Seed Alice state** preset,
-inspect Bob, suspend Alice, then click **Wake via HTTPS** and run her
-**Continue state** preset. Expect balance **42**, generator value **1**, and
-`Alice was here` in her file.
+In the browser: pick a tab, **Launch**, run **Seed state**, **Suspend**, then
+**Wake via HTTPS** and run **Continue state**. Expect balance **42**, generator
+value **1**, and the file intact. Do it in the other tab and watch the identical
+sequence in a different language.
 
 ## Validate the Build
 
@@ -139,11 +139,12 @@ inspect Bob, suspend Alice, then click **Wake via HTTPS** and run her
 ./validate.sh
 ```
 
-This launches its own MicroVM, seeds interpreter state, suspends it, resumes it
-with an ordinary HTTPS request, and asserts the state survived. It also confirms
-the MicroVM endpoint rejects unauthenticated requests with 403 and the
-controller API rejects them with 401. The validation session is terminated on
-exit, including on failure.
+For **each** runtime: launches a MicroVM, seeds interpreter state, suspends it,
+resumes it with an ordinary HTTPS request, and asserts the output is exactly
+`42 1 validated` — the same string for both languages. It also confirms the
+MicroVM endpoint rejects unauthenticated requests with 403 and the controller
+rejects a missing passphrase with 401. Sessions are terminated on exit,
+including on failure.
 
 ## Enumerate the Available Images
 
@@ -152,19 +153,7 @@ exit, including on failure.
 ```
 
 Read-only. Lists the AWS-managed base images with every published version, then
-any images this account has built on top of them. Nothing is created, modified
-or deleted, and it is safe to run before `apply.sh` — an account with no images
-of its own simply says so.
-
-This is the AMI-catalog equivalent, and the contrast is the point. EC2 answers
-the same question with `describe-images`, which takes `--owners` and `--filters`
-across tens of thousands of AMIs. `ListManagedMicrovmImages` accepts only
-`maxResults` and `nextToken`, because there is no catalog to search: AWS
-publishes the base image, and your `Dockerfile` is the difference.
-
-Base image versions age out through `DEPRECATED`, `EXPIRING` and `EXPIRED`, so
-what this prints today is not necessarily what you can still build on next
-quarter.
+the images this account has built. Safe to run before `apply.sh`.
 
 ## Destroy the Build
 
@@ -172,33 +161,29 @@ quarter.
 ./destroy.sh
 ```
 
-MicroVMs are not owned by Terraform, so teardown terminates every session
-launched from the image first — including orphans left by a failed controller
-call — then destroys the three phases in reverse order. Keep the local Terraform
-state until teardown succeeds.
+MicroVMs are not owned by Terraform, so teardown terminates every session from
+**both** images first — including orphans — then destroys the three phases in
+reverse order. Keep the local Terraform state until it succeeds.
 
 ## Cost Controls
 
 Each MicroVM uses the **0.5 GB / 0.25 vCPU baseline** (bursting to 2 GB / 1 vCPU),
 suspends after 60 seconds idle, terminates after 15 minutes suspended, and has a
-30-minute maximum lifetime. The controller caps the demo at two concurrent
-sessions. There is no NAT gateway, EC2 host or load balancer.
+30-minute maximum lifetime. One session per runtime, so at most two VMs.
 
-Suspended MicroVMs stop compute charges but still incur snapshot storage. Image
-storage, S3, Cognito, API Gateway, Lambda, DynamoDB and CloudWatch logs all bill
-separately. Log groups use one-day retention. See
+Two images means two image-storage charges. Suspended MicroVMs stop compute
+charges but still incur snapshot storage. Log groups use one-day retention. See
 [Lambda pricing](https://aws.amazon.com/lambda/pricing/).
 
 ## Notes and Limits
 
-Arbitrary Python runs inside the MicroVM, and the VM — not the interpreter — is
-the security boundary. The MicroVM receives **no execution role**, so it holds no
-AWS credentials; internet egress is enabled. The five-second cell timeout is a
-usability guard, not a sandbox.
+Submitted code runs inside the MicroVM, and the **VM** — not the interpreter — is
+the security boundary. Neither MicroVM receives an execution role, so neither
+holds AWS credentials; internet egress is enabled. The five-second cell timeout
+is a usability guard, not a sandbox.
 
 Session preservation is ephemeral and is not durable storage. Termination,
-expiry or failure loses all session state. This is a shared two-slot lab: every
-signed-in user controls the same Alice and Bob.
+expiry or failure loses all session state.
 
 Lambda MicroVMs are available in N. Virginia, Ohio, Oregon, Ireland and Tokyo;
 `01-microvms/variables.tf` enforces that list.

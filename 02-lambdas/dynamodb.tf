@@ -1,9 +1,10 @@
 # ==============================================================================
-# Session Table — which MicroVM belongs to which tenant
+# Session Table — which MicroVM belongs to which runtime
 # ==============================================================================
-# One row per tenant ("alice" / "bob") holding the MicroVM id, its endpoint and
-# the last application sample. A shared row would let concurrent writes clobber
-# each other, and a lost MicroVM id orphans a VM that bills until it expires.
+# One row per runtime ("python" / "node") holding the MicroVM id, its endpoint
+# and the last application sample. A shared row would let concurrent writes
+# clobber each other, and a lost MicroVM id orphans a VM that bills until it
+# expires.
 #
 # This table does not restore sessions. Interpreter memory lives in the MicroVM
 # snapshot; what is stored here is only enough to find the VM again.

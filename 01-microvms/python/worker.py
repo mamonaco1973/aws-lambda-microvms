@@ -1,11 +1,11 @@
-"""A real, persistent Python interpreter holding one tenant's session state.
+"""A real, persistent Python interpreter holding one session's state.
 
 This process is the thing the whole demo is about. Its globals dict survives
 suspend and resume because AWS checkpoints the VM's memory, not because anything
 here is serialized -- there is no save path, no pickling and no replay. When a
 resumed session still knows `balance`, it is the same process that set it.
 
-The VM is the security boundary, not this interpreter. Tenant code runs through
+The VM is the security boundary, not this interpreter. Submitted code runs through
 exec with full access to the process, and that is acceptable only because the
 MicroVM around it is isolated and holds no AWS credentials.
 """
@@ -52,9 +52,15 @@ def main():
     # Real initialization work, sized so the snapshot saves something visible
     # rather than demonstrating a trivially cheap startup.
     sales = tuple((i % 12, (i * 7919) % 10000 / 100) for i in range(200000))
-    totals = {month: sum(v for m, v in sales if m == month) for month in range(12)}
 
-    # Seeded into the tenant's namespace so a resumed session can prove the
+    # Single pass, matching worker.js exactly. A per-month comprehension would
+    # walk the data twelve times and make the two runtimes' reported init_ms
+    # incomparable -- which is the one number this demo puts side by side.
+    totals = {month: 0.0 for month in range(12)}
+    for month, value in sales:
+        totals[month] += value
+
+    # Seeded into the session namespace so a resumed session can prove the
     # preloaded data is still the same object it was before suspension.
     namespace = {"__name__": "__session__", "sales": sales, "totals": totals, "Path": Path}
 
@@ -74,11 +80,11 @@ def main():
                 try:
                     # Same dict for globals and locals, so assignments persist
                     # into the session rather than dying with the exec frame.
-                    exec(compile(payload["code"], "<tenant-cell>", "exec"), namespace, namespace)
+                    exec(compile(payload["code"], "<cell>", "exec"), namespace, namespace)
                     ok = True
                 except BaseException:
-                    # BaseException, not Exception: SystemExit from a tenant
-                    # calling sys.exit() must be reported, not kill the session.
+                    # BaseException, not Exception: SystemExit from submitted
+                    # code calling sys.exit() must be reported, not kill the session.
                     traceback.print_exc(limit=3)
                     ok = False
             print(json.dumps({"ok": ok, "stdout": output.getvalue(),

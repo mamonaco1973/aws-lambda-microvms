@@ -1,14 +1,15 @@
 # ==============================================================================
 # Build Role and Logs — permissions Lambda assumes while building the image
 # ==============================================================================
-# Scoped to exactly one object and one log group. This role exists only for the
-# duration of a build; MicroVMs launched from the finished image receive no
-# execution role at all, so tenant code never holds AWS credentials.
+# Scoped to this deployment's own artifacts and log groups. The role exists
+# only for the duration of a build; MicroVMs launched from a finished image
+# receive no execution role at all, so submitted code holds no AWS credentials.
 
 # Build output is the only way to diagnose a Dockerfile or /ready hook failure.
 # One-day retention keeps that available without accruing log cost.
 resource "aws_cloudwatch_log_group" "build" {
-  name              = local.log_name
+  for_each          = local.runtimes
+  name              = "/aws/lambda/microvms/${local.image_names[each.key]}"
   retention_in_days = 1
 }
 
@@ -34,10 +35,10 @@ resource "aws_iam_role_policy" "build" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # This exact object, not the bucket: a build can read its own source and
-      # nothing else that ever lands here.
-      { Effect = "Allow", Action = ["s3:GetObject"], Resource = aws_s3_object.app.arn },
-      { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.build.arn}:*" }
+      # These exact objects, not the bucket: a build reads the runtime sources
+      # this deployment uploaded and nothing else that ever lands here.
+      { Effect = "Allow", Action = ["s3:GetObject"], Resource = [for o in aws_s3_object.app : o.arn] },
+      { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = [for g in aws_cloudwatch_log_group.build : "${g.arn}:*"] }
     ]
   })
 }

@@ -4,7 +4,7 @@
 # ==============================================================================
 # Purpose:
 #   Deploys the Lambda MicroVM demo in three phases: the pre-initialized MicroVM
-#   image, the Cognito/API/Lambda controller, and the static web frontend.
+#   images, the API/Lambda controller, and the static web frontend.
 #
 # Notes:
 #   - Requires AWS CLI v2 (with lambda-microvms), Terraform, jq, zip, python3.
@@ -48,14 +48,16 @@ for phase in 01-microvms 02-lambdas 03-webapp; do
 done
 
 # ------------------------------------------------------------------------------
-# PACKAGE THE MICROVM APPLICATION
+# PACKAGE THE MICROVM APPLICATIONS
 # ------------------------------------------------------------------------------
-# Lambda builds the image from this zip: a Dockerfile plus the session server.
+# One zip per runtime, each a Dockerfile plus its session server. Lambda builds
+# both images remotely, so no local Docker daemon is involved.
 # ------------------------------------------------------------------------------
-echo "NOTE: Packaging the MicroVM application..."
+echo "NOTE: Packaging the MicroVM applications..."
 
 rm -rf dist && mkdir -p dist
-(cd 01-microvms/app && zip -q -X -r ../../dist/app.zip Dockerfile server.py worker.py)
+(cd 01-microvms/python && zip -q -X -r ../../dist/python-app.zip Dockerfile server.py worker.py)
+(cd 01-microvms/node && zip -q -X -r ../../dist/node-app.zip Dockerfile server.js worker.js)
 
 # ------------------------------------------------------------------------------
 # PACKAGE THE CONTROLLER LAMBDA
@@ -115,9 +117,9 @@ fi
 echo "NOTE: Using base image version ${BASE_IMAGE_VERSION}"
 
 # ------------------------------------------------------------------------------
-# BUILD THE MICROVM IMAGE
+# BUILD THE MICROVM IMAGES
 # ------------------------------------------------------------------------------
-echo "NOTE: Building the MicroVM image (this takes several minutes)..."
+echo "NOTE: Building the MicroVM images (this takes several minutes)..."
 
 # Written here and reused verbatim by destroy.sh, so teardown never has to
 # re-derive these values. Deliberately NOT named terraform.tfvars or
@@ -131,18 +133,17 @@ terraform -chdir=01-microvms init -input=false
 terraform -chdir=01-microvms apply -auto-approve -input=false \
   -var-file=deployment.tfvars.json
 
-IMAGE_ARN=$(terraform -chdir=01-microvms output -raw image_arn)
-IMAGE_VERSION=$(terraform -chdir=01-microvms output -raw image_version)
-echo "NOTE: MicroVM image ${IMAGE_ARN} version ${IMAGE_VERSION}"
+IMAGES=$(terraform -chdir=01-microvms output -json images)
+echo "${IMAGES}" | jq -r 'to_entries[] | "NOTE: " + .key + " image " + .value.image_name + " version " + .value.image_version'
 
 # ------------------------------------------------------------------------------
-# BUILD COGNITO, API GATEWAY AND THE CONTROLLER LAMBDA
+# BUILD API GATEWAY AND THE CONTROLLER LAMBDA
 # ------------------------------------------------------------------------------
-echo "NOTE: Deploying Cognito, API Gateway and the controller Lambda..."
+echo "NOTE: Deploying API Gateway and the controller Lambda..."
 
-jq -n --arg region "${AWS_DEFAULT_REGION}" --arg arn "${IMAGE_ARN}" \
-      --arg version "${IMAGE_VERSION}" \
-  '{region: $region, name: "microvms", image_arn: $arn, image_version: $version}' \
+jq -n --arg region "${AWS_DEFAULT_REGION}" --arg base "${BASE_IMAGE_VERSION}" \
+      --argjson images "${IMAGES}" \
+  '{region: $region, name: "microvms", base_image_version: $base, images: $images}' \
   > 02-lambdas/deployment.tfvars.json
 
 terraform -chdir=02-lambdas init -input=false
@@ -152,7 +153,8 @@ terraform -chdir=02-lambdas apply -auto-approve -input=false \
 # ------------------------------------------------------------------------------
 # BUILD THE WEB APPLICATION
 # ------------------------------------------------------------------------------
-# config.json carries the Cognito domain, client id and API URL to the browser.
+# config.json carries only the API URL. The demo passphrase is deliberately
+# absent: config.json is world-readable, so anything in it is public.
 # ------------------------------------------------------------------------------
 echo "NOTE: Building the web application..."
 

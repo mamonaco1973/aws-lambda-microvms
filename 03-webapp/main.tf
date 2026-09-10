@@ -2,8 +2,8 @@
 # Web Application Phase — uploads the SPA into the bucket built in 02-lambdas
 # ==============================================================================
 # Separate phase because the assets depend on outputs the controller phase
-# produces (Cognito domain, client id, API URL), and because reuploading the
-# frontend should never require touching Cognito or the API.
+# produces (the API URL), and because reuploading the frontend should never
+# require touching the API or the controller.
 
 terraform {
   required_version = ">= 1.7, < 2.0"

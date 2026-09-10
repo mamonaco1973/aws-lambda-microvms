@@ -2,10 +2,10 @@
 
 Two servers on two ports, deliberately:
 
-  * 8080 serves the tenant-facing application (/state, /execute). Endpoint auth
+  * 8080 serves the application (/state, /execute). Endpoint auth
     tokens are scoped to this port only.
   * 8081 serves the AWS lifecycle hooks. Keeping hooks off the application port
-    means a leaked tenant token cannot drive the session's lifecycle, and the
+    means a leaked application token cannot drive the session's lifecycle, and the
     authentication checks in the controller prove that separation holds.
 
 Standard library only. Every dependency added here would be baked into the
@@ -33,7 +33,7 @@ class Lab:
     """Owns the persistent interpreter subprocess and this session's identity.
 
     The interpreter runs as a separate process rather than in-thread so a
-    tenant cell that hangs or calls os._exit can be killed without taking the
+    submitted cell that hangs or calls os._exit can be killed without taking the
     HTTP server down with it. The server survives to report the damage, which
     is what makes the "failure is isolated" demonstration visible.
     """
@@ -43,7 +43,7 @@ class Lab:
 
         Args:
             workspace: Directory the interpreter treats as its working
-                directory, so tenant file writes land somewhere predictable.
+                directory, so file writes from code land somewhere predictable.
 
         Raises:
             RuntimeError: The interpreter failed to report readiness, which
@@ -73,7 +73,7 @@ class Lab:
         # session was resumed rather than freshly launched.
         self.session_nonce = None
 
-        self.tenant = "image-build"
+        self.runtime = "image-build"
         self.microvm_id = None
         self.ticks = 0
         self.events = deque(maxlen=20)
@@ -112,12 +112,12 @@ class Lab:
 
         Returns:
             A dict pairing identity (nonce, image marker, PIDs) with live
-            evidence (tick count, hook history, the tenant's file). The
+            evidence (tick count, hook history, the session's file). The
             controller caches this so the dashboard can display application
             state without touching a suspended VM.
         """
         note = self.workspace / "note.txt"
-        return {"tenant": self.tenant, "microvm_id": self.microvm_id,
+        return {"runtime": self.runtime, "microvm_id": self.microvm_id,
                 "session_nonce": self.session_nonce, "image_marker": self.image_marker,
                 "server_pid": os.getpid(), "worker_pid": self.worker.pid, "ticks": self.ticks,
                 "initialization": self.initialization, "events": list(self.events),
@@ -150,7 +150,7 @@ class Lab:
                     raise ValueError("Session already assigned")
             else:
                 config = json.loads(data.get("runHookPayload") or "{}")
-                self.tenant = str(config.get("tenant", "anonymous"))[:40]
+                self.runtime = str(config.get("runtime", "unknown"))[:40]
                 self.microvm_id = data.get("microvmId")
                 self.session_nonce = str(uuid.uuid4())
         self.events.append({"hook": name, "wall_time": time.time(), "ticks": self.ticks})
@@ -210,8 +210,8 @@ def handler(lab, hooks=False):
     Args:
         lab: The session this handler serves.
         hooks: True for the lifecycle listener on 8081, False for the
-            tenant-facing application on 8080. The same class serves both, but
-            each port exposes only its own routes, so tenant traffic can never
+            application on 8080. The same class serves both, but
+            each port exposes only its own routes, so application traffic can never
             reach a lifecycle hook even if it reaches the port.
 
     Returns:

@@ -25,9 +25,15 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      TABLE_NAME    = aws_dynamodb_table.state.name
-      IMAGE_ARN     = var.image_arn
-      IMAGE_VERSION = var.image_version
+      TABLE_NAME = aws_dynamodb_table.state.name
+
+      # A JSON map keyed by runtime, so adding a runtime needs no Terraform
+      # change here beyond what 01-microvms already produces.
+      IMAGES = jsonencode(var.images)
+
+      BASE_IMAGE_ARN     = local.base_image_arn
+      BASE_IMAGE_VERSION = var.base_image_version
+      DEMO_PASSPHRASE    = random_pet.passphrase.id
     }
   }
 

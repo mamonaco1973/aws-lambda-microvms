@@ -4,35 +4,52 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>AWS Lambda MicroVM Demo</title>
+  <title>AWS Lambda MicroVMs</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
-    <h1>AWS Lambda MicroVM Demo</h1>
-    <p>Run Python in two isolated sessions. Suspend a session, then resume its memory and files.</p>
-    <div id="mode">Sign in to control the demo</div>
-    <button id="login">Sign in with Cognito</button>
-    <button id="logout" hidden>Sign out</button>
+    <h1>AWS Lambda MicroVMs</h1>
+    <p>
+      Two MicroVMs from two images &mdash; one Python, one Node.js. Identical
+      platform configuration, different runtime. Suspend one and resume it:
+      the interpreter picks up exactly where it stopped.
+    </p>
   </header>
-  <main>
-    <div class="instructions">
-      <strong>Demo:</strong> Launch Alice and Bob. Create Alice's state, inspect Bob, suspend Alice,
-      and click <strong>Wake via HTTPS</strong>. Run Alice's next cell to verify the state survived.
-    </div>
-    <div class="tenants" id="tenants"></div>
+
+  <!-- Shown until the passphrase is accepted. The passphrase is never shipped
+       in config.json, so this is the only way to obtain it. -->
+  <section id="gate">
+    <h2>Demo passphrase</h2>
+    <p>Printed by <code>validate.sh</code> at the end of a deployment.</p>
+    <form id="gate-form">
+      <input id="passphrase" type="password" autocomplete="off" spellcheck="false"
+             placeholder="three-word-passphrase" aria-label="Demo passphrase">
+      <button type="submit" class="primary">Enter</button>
+    </form>
+    <p id="gate-error" class="error" hidden></p>
+  </section>
+
+  <main id="app" hidden>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+    <div id="panels"></div>
+
     <section class="evidence">
-      <h2>Lifecycle and Request Log</h2>
-      <p>Automatic refresh checks AWS lifecycle state only. Application values show the last sample.
-        <strong>Sample</strong> sends traffic and can wake a suspended MicroVM.</p>
+      <h2>Lifecycle log</h2>
+      <p>
+        Automatic refresh queries the control plane only. <strong>Sample</strong>,
+        <strong>Wake</strong> and <strong>Run</strong> send real traffic, which
+        is what resumes a suspended MicroVM.
+      </p>
       <div id="timeline" aria-live="polite"></div>
     </section>
   </main>
+
   <footer>
-    512 MiB baseline per MicroVM | Suspend after 60 seconds idle | Terminate after 15 minutes suspended | Maximum lifetime 30 minutes
-    <br>Suspension stops compute charges; snapshot storage and I/O still cost money. Timings include client and network overhead.
+    0.5 GB baseline per MicroVM &middot; suspends after 60s idle &middot;
+    terminates after 15 min suspended &middot; 30 min maximum lifetime.
+    <br>Suspension stops compute charges; snapshot storage still costs money.
   </footer>
-  <script src="/auth.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

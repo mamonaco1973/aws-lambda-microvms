@@ -36,7 +36,7 @@ resource "aws_iam_role_policy" "api" {
           "lambda:TerminateMicrovm",
           "lambda:CreateMicrovmAuthToken",
         ]
-        Resource = var.image_arn
+        Resource = [for image in var.images : image.image_arn]
       },
       {
         Effect   = "Allow"
