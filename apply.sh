@@ -33,6 +33,21 @@ echo "NOTE: Running environment validation..."
 ./check_env.sh
 
 # ------------------------------------------------------------------------------
+# CLEAR STALE AUTO-LOADED VARIABLE FILES
+# ------------------------------------------------------------------------------
+# Every phase now receives its inputs through explicit -var flags. Terraform
+# still auto-loads any *.auto.tfvars.json left in a phase directory, and those
+# are gitignored, so a checkout updated by git pull can keep feeding stale
+# values -- including variables that no longer exist -- indefinitely.
+# ------------------------------------------------------------------------------
+for phase in 01-microvms 02-lambdas 03-webapp; do
+  if [[ -f "${phase}/deployment.auto.tfvars.json" ]]; then
+    echo "NOTE: Removing stale ${phase}/deployment.auto.tfvars.json"
+    rm -f "${phase}/deployment.auto.tfvars.json"
+  fi
+done
+
+# ------------------------------------------------------------------------------
 # PACKAGE THE MICROVM APPLICATION
 # ------------------------------------------------------------------------------
 # Lambda builds the image from this zip: a Dockerfile plus the session server.

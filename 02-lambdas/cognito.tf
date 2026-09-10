@@ -1,9 +1,19 @@
-# Same Hosted UI + public SPA client pattern as aws-cognito-app.
+# ==============================================================================
+# Cognito — presenter authentication, matching the aws-cognito-app pattern
+# ==============================================================================
+# Cognito authenticates the person driving the demo. It has nothing to do with
+# reaching a MicroVM: that uses a separate per-VM token minted by the controller
+# and never sent to the browser. Two independent boundaries, deliberately.
+
 resource "aws_cognito_user_pool" "this" {
   name                     = var.name
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
+
+  # Self-registration is allowed so a viewer following along can sign up
+  # without an operator creating the account first.
   admin_create_user_config { allow_admin_create_user_only = false }
+
   password_policy {
     minimum_length    = 12
     require_lowercase = true
@@ -11,12 +21,14 @@ resource "aws_cognito_user_pool" "this" {
     require_numbers   = true
     require_symbols   = false
   }
+
   schema {
     name                = "email"
     attribute_data_type = "String"
     required            = true
     mutable             = true
   }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -25,38 +37,58 @@ resource "aws_cognito_user_pool" "this" {
   }
 }
 
+# Account id suffix keeps the domain globally unique across AWS accounts.
 resource "aws_cognito_user_pool_domain" "this" {
   domain       = "${var.name}-${data.aws_caller_identity.current.account_id}"
   user_pool_id = aws_cognito_user_pool.this.id
 }
 
+# ------------------------------------------------------------------------------
+# Resource server — defines the custom scope the API routes demand
+# ------------------------------------------------------------------------------
+# Without this, any signed-in user of the pool could call the API. The scope is
+# what makes "may sign in" and "may control MicroVMs" separable later.
 resource "aws_cognito_resource_server" "demo" {
   identifier   = "microvms"
   name         = "MicroVM demo controller"
   user_pool_id = aws_cognito_user_pool.this.id
+
   scope {
     scope_name        = "control"
     scope_description = "Control the two presenter demo sessions"
   }
 }
 
+# ------------------------------------------------------------------------------
+# SPA client — public client, authorization code with PKCE, no secret
+# ------------------------------------------------------------------------------
 resource "aws_cognito_user_pool_client" "spa" {
-  name                                 = "${var.name}-spa"
-  user_pool_id                         = aws_cognito_user_pool.this.id
+  name         = "${var.name}-spa"
+  user_pool_id = aws_cognito_user_pool.this.id
+
+  # A browser cannot keep a secret, so there is none. PKCE is what replaces it.
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", local.scope]
   supported_identity_providers         = ["COGNITO"]
-  callback_urls                        = ["${local.spa_origin}/callback.html"]
-  logout_urls                          = ["${local.spa_origin}/index.html"]
-  prevent_user_existence_errors        = "ENABLED"
-  enable_token_revocation              = true
-  access_token_validity                = 30
-  id_token_validity                    = 30
+
+  # Exact URIs, so a stolen authorization code cannot be redeemed elsewhere.
+  callback_urls = ["${local.spa_origin}/callback.html"]
+  logout_urls   = ["${local.spa_origin}/index.html"]
+
+  prevent_user_existence_errors = "ENABLED"
+  enable_token_revocation       = true
+
+  # Short-lived tokens: this is a shared lab, and a token left in a closed tab
+  # should stop working long before the sessions it could control expire.
+  access_token_validity = 30
+  id_token_validity     = 30
   token_validity_units {
     access_token = "minutes"
     id_token     = "minutes"
   }
+
+  # The scope must exist before a client may request it.
   depends_on = [aws_cognito_resource_server.demo]
 }

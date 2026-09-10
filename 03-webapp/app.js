@@ -6,14 +6,30 @@
 let config;
 let busy = false;
 const states = {};
-const presetNames = {
-  seed: '1 - Create Alice state',
-  continue: '2 - Continue Alice state',
-  inspect: 'Inspect fresh session',
-  bob: 'Create Bob state',
-  failure: 'Raise a Python error',
-  kill: 'Kill this interpreter',
+// Each panel offers only its own tenant's snippets. The two menus are otherwise
+// identical: only the seed preset differs, so each session writes a distinct
+// marker into its own note.txt. Loading Alice's seed into Bob would stamp
+// "Alice was here" inside Bob's VM and read on camera as an isolation failure.
+const presetMenus = {
+  alice: {
+    seed: '1 - Seed Alice state',
+    continue: '2 - Continue state',
+    inspect: 'Inspect session',
+    failure: 'Raise a Python error',
+    kill: 'Kill this interpreter',
+  },
+  bob: {
+    bob: '1 - Seed Bob state',
+    continue: '2 - Continue state',
+    inspect: 'Inspect session',
+    failure: 'Raise a Python error',
+    kill: 'Kill this interpreter',
+  },
 };
+
+// Alice opens ready to seed; Bob opens on Inspect, which on a fresh session
+// prints "Has balance: False" and shows the two VMs share nothing.
+const defaultPreset = { alice: 'seed', bob: 'inspect' };
 
 function log(message, error = false) {
   const row = document.createElement('p');
@@ -60,13 +76,13 @@ function createPanel(tenant) {
     </div>`;
 
   const select = panel.querySelector('select');
-  for (const [key, label] of Object.entries(presetNames)) {
+  for (const [key, label] of Object.entries(presetMenus[tenant])) {
     const option = document.createElement('option');
     option.value = key;
     option.textContent = label;
     select.append(option);
   }
-  select.value = tenant === 'alice' ? 'seed' : 'inspect';
+  select.value = defaultPreset[tenant];
   const editor = panel.querySelector('textarea');
   editor.value = config.presets[select.value];
   select.onchange = () => { editor.value = config.presets[select.value]; };

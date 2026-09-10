@@ -1,4 +1,17 @@
-"""HTTP application and separate lifecycle-hook listener, using only the stdlib."""
+"""HTTP application and lifecycle-hook listener running inside the MicroVM.
+
+Two servers on two ports, deliberately:
+
+  * 8080 serves the tenant-facing application (/state, /execute). Endpoint auth
+    tokens are scoped to this port only.
+  * 8081 serves the AWS lifecycle hooks. Keeping hooks off the application port
+    means a leaked tenant token cannot drive the session's lifecycle, and the
+    authentication checks in the controller prove that separation holds.
+
+Standard library only. Every dependency added here would be baked into the
+snapshot and paid for on every launch, and the demo's point is the preserved
+interpreter, not the package list.
+"""
 import argparse
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,11 +25,30 @@ import threading
 import time
 import uuid
 
+# AWS posts lifecycle hooks to this fixed path prefix on the configured port.
 HOOK = "/aws/lambda-microvms/runtime/v1/"
 
 
 class Lab:
+    """Owns the persistent interpreter subprocess and this session's identity.
+
+    The interpreter runs as a separate process rather than in-thread so a
+    tenant cell that hangs or calls os._exit can be killed without taking the
+    HTTP server down with it. The server survives to report the damage, which
+    is what makes the "failure is isolated" demonstration visible.
+    """
+
     def __init__(self, workspace):
+        """Start the interpreter and wait for it to finish loading its dataset.
+
+        Args:
+            workspace: Directory the interpreter treats as its working
+                directory, so tenant file writes land somewhere predictable.
+
+        Raises:
+            RuntimeError: The interpreter failed to report readiness, which
+                must fail the image build rather than snapshot a broken VM.
+        """
         self.workspace = Path(workspace).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.worker = subprocess.Popen([sys.executable, "-u", str(Path(__file__).with_name("worker.py"))],
@@ -24,11 +56,23 @@ class Lab:
                                        stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
         self.responses = queue.Queue()
         threading.Thread(target=self.read_worker, daemon=True).start()
+
+        # Block until the dataset is loaded. This runs during the image build,
+        # so the snapshot captures a warm interpreter and launches skip it.
         self.initialization = self.responses.get(timeout=60)
         if not self.initialization.get("ready"):
             raise RuntimeError("Worker initialization failed")
-        self.image_marker = str(uuid.uuid4())  # Deliberately shared by snapshot clones.
-        self.session_nonce = None  # Must be generated AFTER snapshot in /run.
+
+        # Generated before the snapshot, so every VM cloned from this image
+        # shares it. That is the point: it demonstrates what NOT to use as
+        # session identity.
+        self.image_marker = str(uuid.uuid4())
+
+        # Generated in the /run hook instead, after restore, so it is unique
+        # per session. Comparing the two across a resume is what proves a
+        # session was resumed rather than freshly launched.
+        self.session_nonce = None
+
         self.tenant = "image-build"
         self.microvm_id = None
         self.ticks = 0
@@ -39,6 +83,12 @@ class Lab:
         threading.Thread(target=self.heartbeat, daemon=True).start()
 
     def read_worker(self):
+        """Drain the interpreter's stdout onto the response queue.
+
+        Runs on its own thread so a cell producing output cannot deadlock the
+        pipe. A corrupt line or an exited process is turned into a response
+        rather than an exception, so /execute always answers.
+        """
         for line in self.worker.stdout:
             try:
                 self.responses.put(json.loads(line))
@@ -47,10 +97,25 @@ class Lab:
         self.responses.put({"ok": False, "stdout": "Worker exited; terminate this session."})
 
     def heartbeat(self):
+        """Increment a counter once per second for the lifetime of the VM.
+
+        This is the evidence that AWS genuinely freezes the VM. The thread never
+        pauses itself, so if wall-clock time advances far more than the tick
+        count across a suspend, the process really was stopped rather than
+        merely idle.
+        """
         while not self.stop.wait(1):
-            self.ticks += 1  # No application-level pause; AWS must freeze the process.
+            self.ticks += 1
 
     def state(self):
+        """Return everything observable about this session.
+
+        Returns:
+            A dict pairing identity (nonce, image marker, PIDs) with live
+            evidence (tick count, hook history, the tenant's file). The
+            controller caches this so the dashboard can display application
+            state without touching a suspended VM.
+        """
         note = self.workspace / "note.txt"
         return {"tenant": self.tenant, "microvm_id": self.microvm_id,
                 "session_nonce": self.session_nonce, "image_marker": self.image_marker,
@@ -60,11 +125,27 @@ class Lab:
                 "worker_alive": self.worker.poll() is None and not self.dead}
 
     def hook(self, name, data):
+        """Handle one AWS lifecycle hook.
+
+        The /run hook is where per-session identity is created, because anything
+        generated earlier is part of the snapshot and therefore shared by every
+        clone. Suspend and resume only record an event: the VM must not pause
+        its own heartbeat, or the freeze evidence would be self-inflicted.
+
+        Args:
+            name: Hook name from the request path.
+            data: Decoded JSON body, carrying microvmId and runHookPayload.
+
+        Raises:
+            ValueError: Unknown hook, or a retried /run aimed at a different
+                MicroVM, which would silently erase a live session.
+        """
         if name not in {"ready", "validate", "run", "suspend", "resume", "terminate"}:
             raise ValueError("Unknown hook")
         if name == "run":
             if self.session_nonce is not None:
-                # Idempotent if AWS retries the same hook; never erase a live session.
+                # AWS may retry a hook. Repeating it for the same VM is fine;
+                # for a different one it means state is being reused wrongly.
                 if self.microvm_id != data.get("microvmId"):
                     raise ValueError("Session already assigned")
             else:
@@ -76,8 +157,25 @@ class Lab:
         return {"ok": True}
 
     def execute(self, code):
+        """Run one Python cell in the persistent interpreter.
+
+        Args:
+            code: Source to execute in the session's namespace.
+
+        Returns:
+            The interpreter's result, or an explanatory failure. A cell that
+            overruns five seconds has its interpreter killed, which loses the
+            session -- a usability guard for a live demo, emphatically not a
+            security sandbox. The VM boundary is the security boundary.
+
+        Raises:
+            ValueError: The payload is not a string of acceptable length.
+        """
         if not isinstance(code, str) or len(code) > 12000:
             raise ValueError("Code must be a string of at most 12000 characters")
+
+        # Non-blocking, so a second request reports the collision instead of
+        # queueing behind a cell that may never finish.
         if not self.lock.acquire(blocking=False):
             return {"ok": False, "stdout": "Another cell is still running."}
         try:
@@ -97,6 +195,7 @@ class Lab:
             self.lock.release()
 
     def close(self):
+        """Stop the heartbeat and shut the interpreter down cleanly."""
         self.stop.set()
         if self.worker.poll() is None:
             self.worker.terminate()
@@ -106,9 +205,21 @@ class Lab:
 
 
 def handler(lab, hooks=False):
+    """Build a request handler bound to one Lab instance.
+
+    Args:
+        lab: The session this handler serves.
+        hooks: True for the lifecycle listener on 8081, False for the
+            tenant-facing application on 8080. The same class serves both, but
+            each port exposes only its own routes, so tenant traffic can never
+            reach a lifecycle hook even if it reaches the port.
+
+    Returns:
+        A BaseHTTPRequestHandler subclass.
+    """
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
-            pass
+            """Silence per-request logging; CloudWatch already records it."""
 
         def send_json(self, value, status=200):
             body = json.dumps(value).encode()
@@ -142,6 +253,11 @@ def handler(lab, hooks=False):
 
 
 def main():
+    """Start both servers and block until the application server stops.
+
+    The hook listener runs on a daemon thread so terminating the application
+    server tears the whole process down, letting AWS reclaim the VM promptly.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
