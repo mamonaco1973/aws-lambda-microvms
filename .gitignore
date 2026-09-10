@@ -15,5 +15,15 @@ dist/
 # Generated at deploy time from the 02-lambdas outputs.
 03-webapp/config.json
 
+# Python virtual environments. Nothing here needs one -- apply.sh installs the
+# controller's dependencies straight into dist/build with pip --target -- but
+# earlier revisions of this project did, and a leftover .venv from one of those
+# will otherwise be committed wholesale.
+.venv/
+.venv-*/
 __pycache__/
 *.pyc
+
+# Ad-hoc probe and survey output.
+*-survey.txt
+probe-*.txt
