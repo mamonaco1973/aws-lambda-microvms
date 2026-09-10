@@ -221,7 +221,7 @@ echo "NOTE: Controller API rejects requests with no Cognito access token (401)."
 # ------------------------------------------------------------------------------
 # Deployment Summary
 # ------------------------------------------------------------------------------
-echo "NOTE: Create a presenter with ./create_user.sh, then sign in with Cognito."
+echo "NOTE: Open the App URL below and choose Sign up to register with your email."
 
 echo ""
 echo "================================================================================="

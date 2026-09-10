@@ -27,9 +27,9 @@ const presetMenus = {
   },
 };
 
-// Alice opens ready to seed; Bob opens on Inspect, which on a fresh session
-// prints "Has balance: False" and shows the two VMs share nothing.
-const defaultPreset = { alice: 'seed', bob: 'inspect' };
+// Both panels open on their own seed preset, so the first cell you run in
+// either session is the one that belongs to it.
+const defaultPreset = { alice: 'seed', bob: 'bob' };
 
 function log(message, error = false) {
   const row = document.createElement('p');

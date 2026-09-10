@@ -99,18 +99,38 @@ Runs one lifecycle operation and returns the result synchronously.
 ## Deploy the Build
 
 ```bash
-./apply.sh          # Builds the image and deploys all three phases
-./create_user.sh    # Creates a Cognito presenter (prompts for a password)
-./demo.sh           # Prints the application URL
+./apply.sh
 ```
 
-`apply.sh` resolves an `AVAILABLE` managed base image version at deploy time,
+`apply.sh` resolves the newest managed base image version at deploy time,
 packages both zips, applies each phase in order, and finishes by running
-`validate.sh`.
+`validate.sh`. The application URL is printed in the validation summary.
 
-In the browser: launch Alice and Bob, run Alice's **Create state** preset,
+## Sign Up and Sign In
+
+There is no user-creation script. The Cognito user pool allows **self-service
+registration**, so accounts are created from the browser:
+
+1. Open the **App** URL printed by `validate.sh`.
+2. Click **Sign in with Cognito** to reach the Hosted UI.
+3. Choose **Sign up**, enter your email address and a password.
+4. Cognito emails a verification code. Enter it to confirm the account.
+5. You are returned to the application, signed in.
+
+Password policy is **at least 12 characters, with an uppercase letter, a
+lowercase letter and a number**. Symbols are allowed but not required.
+
+The pool uses Cognito's built-in email delivery, which is capped at roughly
+**50 messages per day** and arrives from a `no-reply@verificationemail.com`
+address — fine for a demo, and the reason to check a spam folder if the code
+does not appear. Verification is one-time; later sign-ins go straight through.
+
+Every signed-in user shares control of the same two sessions. This is a shared
+two-slot lab, not a multi-tenant application.
+
+Once signed in: launch Alice and Bob, run Alice's **Seed Alice state** preset,
 inspect Bob, suspend Alice, then click **Wake via HTTPS** and run her
-**Continue** preset. Expect balance **42**, generator value **1**, and
+**Continue state** preset. Expect balance **42**, generator value **1**, and
 `Alice was here` in her file.
 
 ## Validate the Build
