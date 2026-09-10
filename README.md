@@ -196,12 +196,29 @@ reverse order. Keep the local Terraform state until it succeeds.
 ## Cost Controls
 
 Each MicroVM uses the **0.5 GB / 0.25 vCPU baseline** (bursting to 2 GB / 1 vCPU),
-suspends after 60 seconds idle, terminates after 15 minutes suspended, and has a
-30-minute maximum lifetime. One session per runtime, so at most three VMs.
+auto-suspends after 30 minutes idle, terminates after 30 minutes suspended, and
+has a 1-hour maximum lifetime. One session per runtime, so at most three VMs.
 
-Three images means three image-storage charges. Suspended MicroVMs stop compute
-charges but still incur snapshot storage. Log groups use one-day retention. See
-[Lambda pricing](https://aws.amazon.com/lambda/pricing/).
+At ARM rates that baseline costs **$0.0315/hour** while RUNNING
+(0.25 vCPU x $0.0000276944 + 0.5 GB x $0.0000036667 per second) and **nothing**
+while SUSPENDED. There is no per-request charge.
+
+Suspending is not free, though: **$0.0038/GB** to write the snapshot and
+**$0.00155/GB** to read it back on resume — and a snapshot read is also charged
+on every launch. That round trip only pays for itself after roughly **ten idle
+minutes per GB of snapshot**, which is why auto-suspend is set to 30 minutes
+rather than something aggressive. Use the **Suspend** button to see it on
+demand; the idle policy is a cost guard, not the demonstration.
+
+This is also why `GET /api/status` calls `GetMicrovm` and never touches the VM:
+polling the endpoint would auto-resume a suspended MicroVM and bill a snapshot
+read on every refresh.
+
+Images are billed separately from MicroVMs at **$0.08/GB-month with a one-week
+minimum**, whether or not anything is running. Image names are content-hashed,
+so every source change mints a new image that bills for at least a week —
+`destroy.sh` deletes them but cannot undo the minimum. Log groups use one-day
+retention. See [Lambda pricing](https://aws.amazon.com/lambda/pricing/).
 
 ## Notes and Limits
 

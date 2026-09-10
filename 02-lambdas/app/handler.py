@@ -36,9 +36,19 @@ DEMO_PASSPHRASE = os.environ["DEMO_PASSPHRASE"]
 # configuration panel reports them back verbatim -- what the browser displays
 # is what was actually sent to RunMicrovm, not a hand-written copy.
 BASELINE_MIB = 512
-IDLE_SUSPEND_SECONDS = 60
-SUSPENDED_TTL_SECONDS = 900
-MAX_LIFETIME_SECONDS = 1800
+
+# Auto-suspend is a cost guard, not the demonstration -- the UI has a Suspend
+# button, so nothing here needs to fire for the demo to work. It is set well
+# above the suspend/resume breakeven (~10 minutes per GB of snapshot: a
+# $0.0038/GB write plus a $0.00155/GB read against $0.0315/hour of compute),
+# because suspending a VM that comes back a minute later costs more than
+# leaving it running.
+IDLE_SUSPEND_SECONDS = 1800
+
+# Must stay below MAX_LIFETIME_SECONDS or idle suspend can never fire -- the VM
+# would be terminated at the same instant it first became eligible.
+SUSPENDED_TTL_SECONDS = 1800
+MAX_LIFETIME_SECONDS = 3600
 APP_PORT = 8080
 HOOK_PORT = 8081
 

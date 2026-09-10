@@ -167,6 +167,10 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
     --ingress-network-connectors "arn:aws:lambda:${AWS_DEFAULT_REGION}:aws:network-connector:aws-network-connector:ALL_INGRESS" \
     --idle-policy '{"autoResumeEnabled":true,"maxIdleDurationSeconds":60,"suspendedDurationSeconds":900}' \
     --maximum-duration-in-seconds 1800)
+  # Deliberately tighter than the controller's policy in handler.py. This
+  # session lives about a minute and suspends explicitly, so the idle timer
+  # never matters; the short ceiling is a backstop that reclaims the VM
+  # quickly if this script is killed before the cleanup trap runs.
 
   VM_ID=$(echo "${RUN}" | jq -r '.microvmId')
   ENDPOINT=$(echo "${RUN}" | jq -r '.endpoint')
