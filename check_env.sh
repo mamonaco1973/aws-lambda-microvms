@@ -42,19 +42,3 @@ if ! aws lambda-microvms help >/dev/null 2>&1; then
   exit 1
 fi
 echo "NOTE: AWS CLI supports the lambda-microvms service."
-
-# Only pip itself has to run locally. The controller's wheels are resolved for
-# the Lambda runtime's Python, so the host interpreter's version is irrelevant --
-# but a pip too old to honor --python-version would silently build a bad zip.
-if ! python3 -m pip --version >/dev/null 2>&1; then
-  echo "ERROR: python3 -m pip is not available. Install pip (dnf install -y python3-pip)."
-  exit 1
-fi
-
-pip_major="$(python3 -m pip --version | sed -E 's/^pip ([0-9]+).*/\1/')"
-if [ "${pip_major}" -lt 20 ]; then
-  echo "ERROR: pip ${pip_major} is too old to resolve wheels for another Python version."
-  echo "ERROR: Upgrade with: python3 -m pip install --user --upgrade pip"
-  exit 1
-fi
-echo "NOTE: pip $(python3 -m pip --version | awk '{print $2}') can target the Lambda runtime."
