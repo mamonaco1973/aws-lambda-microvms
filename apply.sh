@@ -119,10 +119,17 @@ echo "NOTE: Using base image version ${BASE_IMAGE_VERSION}"
 # ------------------------------------------------------------------------------
 echo "NOTE: Building the MicroVM image (this takes several minutes)..."
 
+# Written here and reused verbatim by destroy.sh, so teardown never has to
+# re-derive these values. Deliberately NOT named terraform.tfvars or
+# *.auto.tfvars: Terraform must never auto-load it, so a stale copy can only
+# take effect when a command passes it explicitly.
+jq -n --arg region "${AWS_DEFAULT_REGION}" --arg version "${BASE_IMAGE_VERSION}" \
+  '{region: $region, base_image_version: $version}' \
+  > 01-microvms/deployment.tfvars.json
+
 terraform -chdir=01-microvms init -input=false
-terraform -chdir=01-microvms apply -auto-approve \
-  -var="region=${AWS_DEFAULT_REGION}" \
-  -var="base_image_version=${BASE_IMAGE_VERSION}"
+terraform -chdir=01-microvms apply -auto-approve -input=false \
+  -var-file=deployment.tfvars.json
 
 IMAGE_ARN=$(terraform -chdir=01-microvms output -raw image_arn)
 IMAGE_VERSION=$(terraform -chdir=01-microvms output -raw image_version)
@@ -133,12 +140,14 @@ echo "NOTE: MicroVM image ${IMAGE_ARN} version ${IMAGE_VERSION}"
 # ------------------------------------------------------------------------------
 echo "NOTE: Deploying Cognito, API Gateway and the controller Lambda..."
 
+jq -n --arg region "${AWS_DEFAULT_REGION}" --arg arn "${IMAGE_ARN}" \
+      --arg version "${IMAGE_VERSION}" \
+  '{region: $region, name: "microvms", image_arn: $arn, image_version: $version}' \
+  > 02-lambdas/deployment.tfvars.json
+
 terraform -chdir=02-lambdas init -input=false
-terraform -chdir=02-lambdas apply -auto-approve \
-  -var="region=${AWS_DEFAULT_REGION}" \
-  -var="name=microvms" \
-  -var="image_arn=${IMAGE_ARN}" \
-  -var="image_version=${IMAGE_VERSION}"
+terraform -chdir=02-lambdas apply -auto-approve -input=false \
+  -var-file=deployment.tfvars.json
 
 # ------------------------------------------------------------------------------
 # BUILD THE WEB APPLICATION
@@ -150,10 +159,13 @@ echo "NOTE: Building the web application..."
 WEB_BUCKET=$(terraform -chdir=02-lambdas output -raw web_bucket_name)
 terraform -chdir=02-lambdas output -json web_config > 03-webapp/config.json
 
+jq -n --arg region "${AWS_DEFAULT_REGION}" --arg bucket "${WEB_BUCKET}" \
+  '{region: $region, web_bucket_name: $bucket}' \
+  > 03-webapp/deployment.tfvars.json
+
 terraform -chdir=03-webapp init -input=false
-terraform -chdir=03-webapp apply -auto-approve \
-  -var="region=${AWS_DEFAULT_REGION}" \
-  -var="web_bucket_name=${WEB_BUCKET}"
+terraform -chdir=03-webapp apply -auto-approve -input=false \
+  -var-file=deployment.tfvars.json
 
 # ------------------------------------------------------------------------------
 # BUILD VALIDATION
