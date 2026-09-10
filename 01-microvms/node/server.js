@@ -91,7 +91,7 @@ class Lab {
     this.heartbeat = setInterval(() => { this.ticks += 1; }, 1000);
   }
 
-  // Resolves once the interpreter reports its dataset is loaded. The hook
+  // Resolves once the interpreter reports readiness. The hook
   // listener does not bind until this settles, which is what gates the
   // snapshot on a fully warm process.
   ready(timeoutMs = 60000) {
@@ -240,7 +240,7 @@ function handler(lab, hooks) {
 
 async function main() {
   const lab = new Lab(WORKSPACE);
-  await lab.ready();   // blocks the snapshot until the dataset is in memory
+  await lab.ready();   // blocks the snapshot until the worker is up
   http.createServer(handler(lab, true)).listen(HOOK_PORT, '0.0.0.0');
   http.createServer(handler(lab, false)).listen(PORT, '0.0.0.0');
 }

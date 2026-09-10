@@ -9,8 +9,6 @@ The demonstration is deliberately dull. "Seed state" assigns a few ordinary
 variables and writes a file; "Check state" prints them back after a suspend and
 a resume. Nothing is saved and nothing is reloaded in between, so the only
 explanation for the values still being there is that it is the same process.
-`rows` comes from the dataset built during the image build, so the same cell
-also shows that build-time memory survived into the session.
 
 These are conveniences, not a contract. The editor is free-form and the
 controller executes whatever it is sent.
@@ -27,8 +25,7 @@ print('Variables set. Now suspend the MicroVM.')""",
         "check": """print('user  =', user)
 print('count =', count)
 print('items =', ' '.join(items))
-print('file  =', Path('note.txt').read_text(encoding='utf-8'))
-print('rows  =', len(sales))""",
+print('file  =', Path('note.txt').read_text(encoding='utf-8'))""",
 
         "failure": """raise RuntimeError('A submitted cell failed; the other MicroVMs are unaffected')""",
 
@@ -46,8 +43,7 @@ console.log('Variables set. Now suspend the MicroVM.');""",
         "check": """console.log('user  =', user);
 console.log('count =', count);
 console.log('items =', items.join(' '));
-console.log('file  =', fs.readFileSync('note.txt', 'utf8'));
-console.log('rows  =', sales.length);""",
+console.log('file  =', fs.readFileSync('note.txt', 'utf8'));""",
 
         "failure": """throw new Error('A submitted cell failed; the other MicroVMs are unaffected');""",
 
@@ -65,7 +61,6 @@ echo 'Variables set. Now suspend the MicroVM.'""",
 echo "count = ${count}"
 echo "items = ${items[*]}"
 echo "file  = $(cat note.txt)"
-echo "rows  = ${#sales[@]}"
 """,
 
         # Bash only. A live child process surviving a memory checkpoint is the

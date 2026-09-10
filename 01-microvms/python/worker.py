@@ -10,7 +10,6 @@ exec with full access to the process, and that is acceptable only because the
 MicroVM around it is isolated and holds no AWS credentials.
 """
 import contextlib
-import hashlib
 import io
 import json
 import os
@@ -36,38 +35,25 @@ class LimitedOutput(io.StringIO):
 
 
 def main():
-    """Load the dataset, announce readiness, then serve cells from stdin.
+    """Announce readiness, then serve cells from stdin.
 
-    The load happens before the readiness line is printed, which is what makes
-    it part of the image snapshot: the /ready hook does not pass until this
-    finishes, so every launched MicroVM restores with the dataset already in
-    memory instead of rebuilding it.
+    Anything done before the readiness line is printed becomes part of the image
+    snapshot, because the /ready hook does not pass until this finishes. There
+    is deliberately nothing here to preload -- but this is where it would go.
 
     The protocol is one JSON object per line in each direction. Line-delimited
     JSON over pipes avoids any dependency and keeps the interpreter isolated in
     its own process, so killing a hung cell cannot take down the HTTP server.
     """
-    started = time.perf_counter()
+    # The session namespace. Assignments made by submitted code land here and
+    # outlive the cell; Path is seeded so a cell can touch the filesystem
+    # without an import.
+    namespace = {"__name__": "__session__", "Path": Path}
 
-    # Real initialization work, sized so the snapshot saves something visible
-    # rather than demonstrating a trivially cheap startup.
-    sales = tuple((i % 12, (i * 7919) % 10000 / 100) for i in range(200000))
-
-    # Single pass, matching worker.js exactly. A per-month comprehension would
-    # walk the data twelve times and make the two runtimes' reported init_ms
-    # incomparable -- which is the one number this demo puts side by side.
-    totals = {month: 0.0 for month in range(12)}
-    for month, value in sales:
-        totals[month] += value
-
-    # Seeded into the session namespace so a resumed session can prove the
-    # preloaded data is still the same object it was before suspension.
-    namespace = {"__name__": "__session__", "sales": sales, "totals": totals, "Path": Path}
-
-    print(json.dumps({"ready": True, "rows": len(sales),
-                      "init_ms": round((time.perf_counter() - started) * 1000, 2),
-                      "dataset_sha256": hashlib.sha256(str(totals).encode()).hexdigest(),
-                      "pid": os.getpid()}), flush=True)
+    # Nothing is preloaded, so this returns immediately -- but it still has to
+    # be printed, because the server blocks on it and only then does /ready
+    # pass. That handshake is what decides when the snapshot is taken.
+    print(json.dumps({"ready": True, "pid": os.getpid()}), flush=True)
 
     for line in sys.stdin:
         try:

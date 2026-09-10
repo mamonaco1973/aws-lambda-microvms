@@ -3,7 +3,7 @@
 // A real, persistent Node.js interpreter holding one session's state.
 //
 // The Node counterpart of worker.py, deliberately structured the same way so
-// the two runtimes can be read side by side. Its context object survives
+// the runtimes can be read side by side. Its context object survives
 // suspend and resume because AWS checkpoints the VM's memory -- there is no
 // save path, no serialization and no replay. When a resumed session still
 // knows `balance`, it is the same process that set it.
@@ -14,7 +14,6 @@
 // ============================================================================
 const vm = require('vm');
 const fs = require('fs');
-const crypto = require('crypto');
 const readline = require('readline');
 
 // Total captured output per cell, matching the Python worker's cap. Keeps a
@@ -22,32 +21,14 @@ const readline = require('readline');
 const OUTPUT_LIMIT = 16000;
 
 function main() {
-  const started = process.hrtime.bigint();
-
-  // Real initialization work, performed before the readiness line is printed,
-  // so the image snapshot captures it and launches skip it entirely.
-  const sales = [];
-  for (let i = 0; i < 200000; i++) {
-    sales.push([i % 12, ((i * 7919) % 10000) / 100]);
-  }
-  const totals = {};
-  for (let m = 0; m < 12; m++) totals[m] = 0;
-  for (const [m, v] of sales) totals[m] += v;
-
   // The persistent scope. Same role as the Python worker's namespace dict:
   // assignments made by submitted code land here and outlive the cell.
-  const context = vm.createContext({ sales, totals, fs });
+  const context = vm.createContext({ fs });
 
-  const digest = crypto.createHash('sha256')
-    .update(JSON.stringify(totals)).digest('hex');
-
-  send({
-    ready: true,
-    rows: sales.length,
-    init_ms: Number(process.hrtime.bigint() - started) / 1e6,
-    dataset_sha256: digest,
-    pid: process.pid,
-  });
+  // Nothing is preloaded, so this returns immediately -- but it still has to be
+  // sent, because the server blocks on it and only then does /ready pass. That
+  // handshake is what decides when the snapshot is taken.
+  send({ ready: true, pid: process.pid });
 
   // One JSON object per line in each direction, matching the Python worker so
   // the server implementations stay interchangeable.

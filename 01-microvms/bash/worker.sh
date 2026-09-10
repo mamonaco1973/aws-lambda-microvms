@@ -44,41 +44,13 @@ _mv_now_ms() {
 }
 
 # ------------------------------------------------------------------------------
-# Initialization — the work the snapshot is taken around
+# Readiness handshake
 # ------------------------------------------------------------------------------
-# Runs before the readiness line is printed, so the image build blocks here and
-# every launched MicroVM restores with this already in memory. Bash takes a few
-# seconds to build the array where Python and Node take milliseconds, which
-# makes this the one runtime where the snapshot's saving is visible on a clock.
-#
-# Values are held in integer cents. The other two workers divide by 100 for a
-# float; bash has no floating point, so the dataset digest differs by design and
-# is never compared across runtimes.
+# Anything done before this line becomes part of the image snapshot, because the
+# server blocks on it and only then does /ready pass. There is deliberately
+# nothing here to preload -- but this is where it would go.
 # ------------------------------------------------------------------------------
-_mv_now_ms; _mv_started=${_mv_ms}
-
-_mv_rows=200000
-declare -a sales
-declare -A totals
-# Associative subscripts are strings, not arithmetic: totals[_mv_m] would
-# key on the literal name and quietly collapse all twelve months into one.
-for ((_mv_m = 0; _mv_m < 12; _mv_m++)); do totals["${_mv_m}"]=0; done
-for ((_mv_i = 0; _mv_i < _mv_rows; _mv_i++)); do
-  _mv_month=$((_mv_i % 12))
-  _mv_value=$(((_mv_i * 7919) % 10000))
-  sales[_mv_i]="${_mv_month} ${_mv_value}"
-  totals["${_mv_month}"]=$((totals["${_mv_month}"] + _mv_value))
-done
-
-_mv_now_ms; _mv_init_ms=$((_mv_ms - _mv_started))
-
-_mv_digest=$(for _mv_m in {0..11}; do
-  printf '%s=%s;' "${_mv_m}" "${totals["${_mv_m}"]}"
-done | sha256sum | cut -d' ' -f1)
-
-jq -nc --argjson rows "${_mv_rows}" --argjson init "${_mv_init_ms}" \
-  --arg digest "${_mv_digest}" --argjson pid "$$" \
-  '{ready: true, rows: $rows, init_ms: $init, dataset_sha256: $digest, pid: $pid}'
+jq -nc --argjson pid "$$" '{ready: true, pid: $pid}'
 
 # ------------------------------------------------------------------------------
 # Cell loop — one JSON object per line in each direction

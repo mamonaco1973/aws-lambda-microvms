@@ -125,7 +125,6 @@ function buildPanel(runtime) {
     <div class="stats">
       <div class="stat"><small>Background ticks</small><strong data-stat="ticks">-</strong></div>
       <div class="stat"><small>Launch to response</small><strong data-stat="launch">-</strong></div>
-      <div class="stat"><small>Init inside snapshot</small><strong data-stat="init">-</strong></div>
       <div class="stat"><small>Last round trip</small><strong data-stat="rtt">-</strong></div>
     </div>
     <div class="editor">
@@ -209,8 +208,6 @@ function render(runtime, data, sampled = false) {
     panel.querySelector('[data-stat="ticks"]').textContent = snapshot.ticks;
     panel.querySelector('[data-stat="launch"]').textContent =
       data.launch_to_first_response_ms === undefined ? '-' : `${data.launch_to_first_response_ms}ms`;
-    panel.querySelector('[data-stat="init"]').textContent =
-      snapshot.initialization ? `${Math.round(snapshot.initialization.init_ms)}ms` : '-';
     panel.querySelector('[data-stat="rtt"]').textContent =
       snapshot.round_trip_ms === undefined ? '-' : `${snapshot.round_trip_ms}ms`;
 

@@ -47,14 +47,14 @@ class Lab:
     """
 
     def __init__(self, workspace):
-        """Start the shell and wait for it to finish loading its dataset.
+        """Start the shell and wait for it to report readiness.
 
         Args:
             workspace: Directory the interpreter treats as its working
                 directory, so file writes from code land somewhere predictable.
 
         Raises:
-            RuntimeError: The interpreter failed to report readiness, which
+            RuntimeError: The worker failed to report readiness, which
                 must fail the image build rather than snapshot a broken VM.
         """
         self.workspace = Path(workspace).resolve()
@@ -65,8 +65,10 @@ class Lab:
         self.responses = queue.Queue()
         threading.Thread(target=self.read_worker, daemon=True).start()
 
-        # Block until the dataset is loaded. This runs during the image build,
-        # so the snapshot captures a warm interpreter and launches skip it.
+        # Block until the worker reports ready. This runs during the image
+        # build, so the snapshot is taken around whatever state exists at this
+        # moment -- put expensive preloading in the worker and every launched
+        # MicroVM inherits it for free.
         self.initialization = self.responses.get(timeout=60)
         if not self.initialization.get("ready"):
             raise RuntimeError("Worker initialization failed")

@@ -51,9 +51,9 @@ resource "aws_cloudcontrolapi_resource" "image" {
       # lifecycle hook.
       Port = 8081
 
-      # Ready gates the snapshot until the dataset is loaded; Validate
-      # exercises the built image and lets Lambda prefetch the pages a real
-      # request touches.
+      # Ready decides when the snapshot is taken -- it does not pass until the
+      # session process is up. Validate exercises the built image and lets
+      # Lambda prefetch the pages a real request touches.
       MicrovmImageHooks = {
         Ready    = "ENABLED", ReadyTimeoutInSeconds = 120
         Validate = "ENABLED", ValidateTimeoutInSeconds = 60

@@ -13,11 +13,9 @@ The three runtimes are configured identically. Every launch parameter,
 connector, policy and limit is the same; only the image differs. That is the
 point.
 
-Bash earns its place by demonstrating two things the other two cannot. A
-**background job survives the checkpoint** — start `sleep 3000 &`, suspend the
-VM, wake it, and the same PID is still counting. And because bash needs roughly
-four seconds to build the same dataset Python and Node build in milliseconds,
-it is the only runtime where the snapshot's saving is **visible on a clock**.
+Bash earns its place by demonstrating something the other two cannot: a
+**background job survives the checkpoint**. Start `sleep 3000 &`, suspend the
+VM, wake it, and the same PID is still counting.
 
 ![webapp](webapp.png)
 
@@ -152,13 +150,11 @@ user  = mike
 count = 7
 items = alpha beta gamma
 file  = written before the suspend
-rows  = 200000
 ```
 
 Nothing was saved and nothing was reloaded in between, so the only explanation
-is that it is the same process. `rows` comes from the dataset built during the
-image build, so build-time memory survived too. Do it in the other tabs and
-watch the identical output in a different language.
+is that it is the same process. Do it in the other tabs and watch the identical
+output in a different language.
 
 On the Bash tab, **Background job** is worth a second pass: run it, suspend,
 wake, and run it again to see the same child process still alive.
