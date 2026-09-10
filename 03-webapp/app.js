@@ -14,8 +14,6 @@ const RUNTIME_LABELS = { python: 'Python', node: 'Node.js', bash: 'Bash' };
 const PRESET_LABELS = {
   check: 'Check state',
   update: 'Update state',
-  // Offered only by runtimes that define it; buildPanel skips absent keys.
-  background: 'Background job (bash)',
   failure: 'Raise an error',
   kill: 'Kill this interpreter',
 };

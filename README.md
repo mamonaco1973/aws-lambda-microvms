@@ -13,16 +13,17 @@ The three runtimes are configured identically. Every launch parameter,
 connector, policy and limit is the same; only the image differs. That is the
 point.
 
-Bash earns its place by demonstrating something the other two cannot: a
-**background job survives the checkpoint**. Start `sleep 3000 &`, suspend the
-VM, wake it, and the same PID is still counting.
+Bash earns its place by proving the platform contract needs no SDK. The
+lifecycle hooks are plain HTTP on a port you declare, so a runtime AWS never
+shipped a client for works exactly like the two it did.
 
 ![webapp](webapp.png)
 
 Key capabilities demonstrated:
 
-1. **Stateful Suspend and Resume** – Memory, generator position, open files and
-   background threads survive an explicit suspend and an HTTPS-triggered resume.
+1. **Stateful Suspend and Resume** – Variables, data structures and open files
+   survive an explicit suspend and an HTTPS-triggered resume, with nothing
+   serialized, saved or replayed in between.
 2. **Runtime Independence** – The same platform configuration runs a Python
    interpreter, a Node.js interpreter and a Bash shell, and `validate.sh`
    asserts all three against byte-identical expected output.
@@ -49,7 +50,6 @@ Several rows have **no EC2 equivalent at all**:
 | Sizing | Baseline memory, vCPU derived, bursts 4x | Instance type from a catalog |
 | Boot payload | `runHookPayload` (16 KB) | User data (16 KB) |
 | Init | `/run` lifecycle hook | cloud-init |
-| Background work | Child processes survive a checkpoint | *no equivalent — a stop loses the process* |
 | Inbound | Network connectors | Security group rules |
 | Credentials | Execution role (none here) | IAM instance profile |
 | Access | Per-VM HTTPS endpoint + scoped token | Public IP + SSH keypair |
@@ -157,9 +157,6 @@ in every VM, while **session memory** belongs to one MicroVM and dies with it.
 Run `Update state` repeatedly and `visits` keeps climbing — until you terminate.
 
 Do it in the other tabs and watch the identical output in a different language.
-
-On the Bash tab, **Background job** is worth a second pass: run it, suspend,
-wake, and run it again to see the same child process still alive.
 
 ## Validate the Build
 

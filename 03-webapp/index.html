@@ -11,9 +11,16 @@
   <header>
     <h1>AWS Lambda MicroVMs</h1>
     <p>
-      Two MicroVMs from two images &mdash; one Python, one Node.js. Identical
-      platform configuration, different runtime. Suspend one and resume it:
-      the interpreter picks up exactly where it stopped.
+      Three MicroVMs from three images &mdash; Python, Node.js and Bash.
+      Identical platform configuration, different runtime.
+    </p>
+    <p>
+      Run <strong>Check state</strong> on a freshly launched MicroVM and the
+      values are already set: they were assigned during the image build and
+      live in the snapshot. <strong>Update state</strong> changes them, and they
+      survive a suspend and resume because it is the same process &mdash;
+      nothing is saved, and nothing is reloaded. Terminate, launch again, and
+      the build-time values are back while yours are gone.
     </p>
   </header>
 
@@ -37,18 +44,21 @@
     <section class="evidence">
       <h2>Lifecycle log</h2>
       <p>
-        Automatic refresh queries the control plane only. <strong>Sample</strong>,
-        <strong>Wake</strong> and <strong>Run</strong> send real traffic, which
-        is what resumes a suspended MicroVM.
+        Automatic refresh queries the control plane only, so it can display a
+        suspended MicroVM without waking it. <strong>Wake via HTTPS</strong> and
+        <strong>Run cell</strong> send real traffic, which is what resumes one.
       </p>
       <div id="timeline" aria-live="polite"></div>
     </section>
   </main>
 
   <footer>
-    0.5 GB baseline per MicroVM &middot; suspends after 60s idle &middot;
-    terminates after 15 min suspended &middot; 30 min maximum lifetime.
-    <br>Suspension stops compute charges; snapshot storage still costs money.
+    Sizing, idle policy and lifetime are reported live in each panel's
+    configuration table &mdash; those values are what the controller actually
+    passed to <code>RunMicrovm</code>.
+    <br>Suspension stops compute charges, but the snapshot write and the read
+    on resume are billed per cycle, and every image carries a one-week storage
+    minimum. Run <code>destroy.sh</code> when you are finished.
   </footer>
   <script src="/app.js"></script>
 </body>

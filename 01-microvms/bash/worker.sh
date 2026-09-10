@@ -4,7 +4,7 @@
 #
 # The bash counterpart of worker.py and worker.js, deliberately structured the
 # same way so all three can be read side by side. Its variables, arrays,
-# functions, working directory and background jobs survive suspend and resume
+# functions and working directory survive suspend and resume
 # because AWS checkpoints the VM's memory -- there is no save path, no
 # serialization and no replay. When a resumed session still knows `balance`,
 # it is the same shell that set it.

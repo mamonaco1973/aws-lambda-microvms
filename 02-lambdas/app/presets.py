@@ -68,17 +68,6 @@ items+=("item${visits}")
 echo "updated ${visits} time(s)" > note.txt
 echo 'State updated. Check it, or suspend and come back to it.'""",
 
-        # Bash only. A live child process surviving a memory checkpoint is the
-        # most direct evidence in the project that the VM really was frozen.
-        "background": """if [[ -v job ]] && kill -0 "${job}" 2>/dev/null; then
-  echo "Background job ${job} is still alive"
-  echo "Age since it started: $(ps -o etime= -p "${job}" | tr -d ' ')"
-else
-  sleep 3000 &
-  job=$!
-  echo "Started background job ${job}; suspend the VM, wake it, and run this again"
-fi""",
-
         "failure": """echo 'A submitted cell failed; the other MicroVMs are unaffected' >&2
 false""",
 
