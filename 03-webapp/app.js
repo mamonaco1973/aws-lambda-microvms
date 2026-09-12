@@ -70,23 +70,72 @@ function log(message, isError = false) {
 }
 
 // -----------------------------------------------------------------------------
-// API access. The passphrase lives in sessionStorage so it dies with the tab,
-// and is sent as a header on every call.
+// Sign-in — Cognito hosted UI with PKCE
+// -----------------------------------------------------------------------------
+// A browser cannot keep a client secret, so the SPA client has none and proves
+// possession of the login with a one-time verifier instead. The token lives in
+// sessionStorage so it dies with the tab.
+//
+// The same token authenticates the MCP connector, which is the point: sign in
+// here and Claude reaches the SAME sandbox, because both resolve to one
+// Cognito identity.
+// -----------------------------------------------------------------------------
+function randomString() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function challengeFor(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function signIn() {
+  const verifier = randomString();
+  const state = randomString();
+  // callback.html reads both of these back; without them it cannot complete
+  // the exchange, which is what stops a code replayed from elsewhere.
+  sessionStorage.setItem('pkce_code_verifier', verifier);
+  sessionStorage.setItem('oauth_state', state);
+
+  const url = new URL(`https://${settings.cognitoDomain}/oauth2/authorize`);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', settings.clientId);
+  url.searchParams.set('redirect_uri', settings.redirectUri);
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('state', state);
+  url.searchParams.set('code_challenge', await challengeFor(verifier));
+  url.searchParams.set('code_challenge_method', 'S256');
+  location.href = url.toString();
+}
+
+function signOut() {
+  sessionStorage.clear();
+  const url = new URL(`https://${settings.cognitoDomain}/logout`);
+  url.searchParams.set('client_id', settings.clientId);
+  url.searchParams.set('logout_uri', `${location.origin}/index.html`);
+  location.href = url.toString();
+}
+
+// -----------------------------------------------------------------------------
+// API access — the Cognito access token on every call.
 // -----------------------------------------------------------------------------
 async function api(path, options = {}) {
   const response = await fetch(settings.apiBaseUrl + path, {
     ...options,
     headers: {
       ...options.headers,
-      'X-Demo-Passphrase': sessionStorage.getItem('passphrase') || '',
+      Authorization: `Bearer ${sessionStorage.getItem('access_token') || ''}`,
     },
   });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    // Stale or wrong passphrase: drop it and show the gate again rather than
-    // retrying with a credential the API has already refused.
-    sessionStorage.removeItem('passphrase');
-    location.reload();
+    // Expired or missing token: back to the hosted UI rather than retrying
+    // with a credential the API has already refused.
+    sessionStorage.removeItem('access_token');
+    signIn();
   }
   if (!response.ok) throw Error(data.error || `HTTP ${response.status}`);
   return data;
@@ -386,6 +435,7 @@ async function refresh() {
 async function start() {
   config = await api('/api/config');
   document.querySelector('#gate').hidden = true;
+  document.querySelector('#sign-out').hidden = false;
   document.querySelector('#app').hidden = false;
   buildTabs();
   const panels = document.querySelector('#panels');
@@ -398,24 +448,15 @@ async function start() {
 async function main() {
   settings = await (await fetch('./config.json', { cache: 'no-store' })).json();
 
-  const form = document.querySelector('#gate-form');
-  const error = document.querySelector('#gate-error');
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    error.hidden = true;
-    sessionStorage.setItem('passphrase', document.querySelector('#passphrase').value.trim());
-    try {
-      await start();
-    } catch (problem) {
-      sessionStorage.removeItem('passphrase');
-      error.textContent = problem.message;
-      error.hidden = false;
-    }
-  };
+  document.querySelector('#sign-in').onclick = signIn;
+  document.querySelector('#sign-out').onclick = signOut;
 
-  // Skip the gate when this tab already has a working passphrase.
-  if (sessionStorage.getItem('passphrase')) {
-    start().catch(() => sessionStorage.removeItem('passphrase'));
+  // A token in this tab means callback.html already completed the exchange.
+  if (sessionStorage.getItem('access_token')) {
+    start().catch(problem => {
+      sessionStorage.removeItem('access_token');
+      log(problem.message, true);
+    });
   }
 }
 

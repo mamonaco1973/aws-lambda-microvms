@@ -23,22 +23,6 @@ variable "images" {
 provider "aws" { region = var.region }
 data "aws_caller_identity" "current" {}
 
-# ------------------------------------------------------------------------------
-# Demo passphrase — the only thing standing in front of the controller
-# ------------------------------------------------------------------------------
-# There is no Cognito here on purpose: a user pool, hosted UI, PKCE and a JWT
-# authorizer are five moving parts that teach nothing about MicroVMs. But this
-# API launches billable VMs and executes submitted code, so it cannot be open.
-#
-# random_pet rather than random_password because this gets typed on camera and
-# read aloud. It lives in Terraform state, is printed by validate.sh, and is
-# deliberately NOT written into config.json -- anything the browser is handed
-# before the user types it would be public.
-resource "random_pet" "passphrase" {
-  length    = 3
-  separator = "-"
-}
-
 locals {
   # The SPA is served from the bucket's regional REST endpoint, so that exact
   # origin must match the API's CORS allow-list.

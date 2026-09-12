@@ -1,22 +1,23 @@
 # ==============================================================================
 # HTTP API — the only public entry point to the MicroVM control plane
 # ==============================================================================
-# No authorizer. Requests carry a shared passphrase in a header, which the
-# controller checks itself. An HTTP API cannot do API keys (that is a REST API
-# feature), and a Lambda authorizer for a single string comparison would be more
-# machinery than the check it performs.
+# No authorizer, deliberately. Authentication happens inside the Lambda for a
+# reason the gateway cannot express: the /oauth/* routes ARE the authentication
+# and must stay public, while /api/* and /mcp need the caller's identity rather
+# than a yes/no -- the email is the session key, so a gateway authorizer would
+# have to hand it down anyway.
 
 resource "aws_apigatewayv2_api" "this" {
   name          = var.name
   protocol_type = "HTTP"
 
   # The SPA is served from the bucket's regional REST endpoint, so exactly one
-  # origin is allowed. x-demo-passphrase must be listed or the browser's
-  # preflight rejects it before the request is ever sent.
+  # origin is allowed. authorization must be listed or the browser's preflight
+  # rejects the Bearer token before the request is ever sent.
   cors_configuration {
     allow_origins = [local.spa_origin]
     allow_methods = ["GET", "POST", "OPTIONS"]
-    allow_headers = ["content-type", "x-demo-passphrase"]
+    allow_headers = ["content-type", "authorization"]
     max_age       = 300
   }
 }
@@ -36,7 +37,16 @@ resource "aws_apigatewayv2_integration" "this" {
 }
 
 resource "aws_apigatewayv2_route" "this" {
-  for_each  = toset(["GET /api/config", "GET /api/status", "POST /api/action"])
+  # The MCP transport and the OAuth proxy share this API with the SPA, so one
+  # deployment serves both front doors and there is no second gateway to keep
+  # in step.
+  for_each = toset([
+    "GET /api/config", "GET /api/status", "POST /api/action",
+    "POST /mcp",
+    "GET /.well-known/oauth-authorization-server",
+    "POST /oauth/register", "GET /authorize",
+    "GET /oauth/callback", "POST /oauth/token",
+  ])
   api_id    = aws_apigatewayv2_api.this.id
   route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.this.id}"

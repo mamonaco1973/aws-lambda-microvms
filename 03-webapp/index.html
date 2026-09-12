@@ -11,6 +11,7 @@
 <body>
   <header>
     <h1>AWS Lambda MicroVMs</h1>
+    <button id="sign-out" type="button" hidden>Sign out</button>
     <p>
       One MicroVM running a real bash shell. Its variables, files and
       installed packages live in the VM's memory and disk, not in a database.
@@ -27,16 +28,12 @@
     </p>
   </header>
 
-  <!-- Shown until the passphrase is accepted. The passphrase is never shipped
-       in config.json, so this is the only way to obtain it. -->
+  <!-- Shown until Cognito hands back a token. The sandbox belongs to the
+       signed-in user, and Claude reaches the same one through the connector. -->
   <section id="gate">
-    <h2>Demo passphrase</h2>
-    <p>Printed by <code>validate.sh</code> at the end of a deployment.</p>
-    <form id="gate-form">
-      <input id="passphrase" type="password" autocomplete="off" spellcheck="false"
-             placeholder="three-word-passphrase" aria-label="Demo passphrase">
-      <button type="submit" class="primary">Enter</button>
-    </form>
+    <h2>Sign in</h2>
+    <p>Your sandbox is tied to your account, and persists between visits.</p>
+    <button id="sign-in" class="primary" type="button">Sign in with Cognito</button>
     <p id="gate-error" class="error" hidden></p>
   </section>
 

@@ -23,9 +23,14 @@ resource "aws_iam_role_policy" "api" {
         Resource = "${aws_cloudwatch_log_group.api.arn}:*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = aws_dynamodb_table.state.arn
+        Effect = "Allow"
+        Action = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Resource = [
+          aws_dynamodb_table.state.arn,
+          # In-flight OAuth records: written at /authorize, read once at
+          # /oauth/callback and /oauth/token, then reaped by TTL.
+          aws_dynamodb_table.oauth_state.arn,
+        ]
       },
       {
         Effect = "Allow"
@@ -78,10 +83,13 @@ resource "aws_iam_role_policy" "api" {
 # stored anywhere in the VM.
 #
 # Deliberately almost powerless. Submitted code runs through eval in the
-# session shell, so this role's permissions ARE the permissions of anyone who
-# gets past the demo passphrase. Reading the four public objects the SPA is
-# already serving to the internet anonymously adds no exposure, which is
-# exactly why that bucket was chosen as the demonstration target.
+# session shell, so this role's permissions ARE the permissions of any signed-in
+# user. Reading the objects the SPA already serves to the internet anonymously
+# adds no exposure, which is exactly why that bucket was chosen as the target.
+#
+# Now that every session belongs to a named Cognito user rather than to whoever
+# knew a shared passphrase, widening this role is defensible -- but it is still
+# a decision to make deliberately, not a default to drift into.
 
 resource "aws_iam_role" "microvm" {
   name = "${var.name}-microvm"

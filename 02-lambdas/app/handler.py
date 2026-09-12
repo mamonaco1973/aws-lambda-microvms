@@ -16,7 +16,6 @@ module, so a second image needs no change here.
 DynamoDB holds only identifiers and the last application sample. Interpreter
 state lives exclusively inside each MicroVM and is never serialized out.
 """
-import hmac
 import json
 import os
 import re
@@ -29,16 +28,37 @@ import uuid
 import boto3
 from botocore.config import Config
 
+import mcp
+from mcp import TOOL_REGISTRY  # noqa: F401  (kept for a single source of truth)
+from oauth import (
+    oauth_authorize,
+    oauth_callback,
+    oauth_metadata,
+    oauth_register,
+    oauth_token,
+)
 from presets import PRESETS
 
-ACTIONS = {"launch", "suspend", "wake", "execute", "result", "terminate"}
+ACTIONS = {"launch", "suspend", "wake", "execute", "result", "reset",
+           "terminate"}
+
+# MCP tool name -> controller action. "config" and "status" are read-only and
+# have no lifecycle action of their own.
+TOOL_ACTIONS = {
+    "launch_session": "launch",
+    "run_cell": "execute",
+    "get_result": "result",
+    "session_status": "status",
+    "suspend_session": "suspend",
+    "reset_session": "reset",
+    "terminate_session": "terminate",
+}
 
 REGION = os.environ["AWS_REGION"]
 IMAGES = json.loads(os.environ["IMAGES"])          # {"python": {...}, "node": {...}, ...}
 RUNTIMES = tuple(sorted(IMAGES))
 BASE_IMAGE_ARN = os.environ["BASE_IMAGE_ARN"]
 BASE_IMAGE_VERSION = os.environ["BASE_IMAGE_VERSION"]
-DEMO_PASSPHRASE = os.environ["DEMO_PASSPHRASE"]
 
 # Passed to RunMicrovm, which is the MicroVM equivalent of an EC2 instance
 # profile: the guest authenticates as this role with no key material inside it.
@@ -91,31 +111,44 @@ def table():
     return boto3.resource("dynamodb", region_name=REGION).Table(os.environ["TABLE_NAME"])
 
 
-def load(runtime):
-    """Read one runtime's session record, or None if it has no live session.
+def key(user, runtime):
+    """Build the session row id.
+
+    Keyed on the authenticated user, which is what gives each person their own
+    MicroVM -- and what makes the browser and the MCP connector land on the
+    SAME sandbox, since both authenticate as the same Cognito identity.
+    """
+    return f"{user}#{runtime}"
+
+
+def load(user, runtime):
+    """Read this user's session record, or None if they have no live session.
 
     The image check matters because reapplying with changed source produces a
     new image, and a stale MicroVM id from the previous one is not live.
     """
-    item = table().get_item(Key={"id": runtime}, ConsistentRead=True).get("Item")
+    item = table().get_item(Key={"id": key(user, runtime)},
+                            ConsistentRead=True).get("Item")
     if not item or item.get("image") != IMAGES[runtime]["image_arn"]:
         return None
     return json.loads(item["data"])
 
 
-def save(runtime, session):
-    """Persist one runtime's session record.
+def save(user, runtime, session):
+    """Persist this user's session record.
 
-    One row per runtime: a shared row would let concurrent writes clobber each
-    other, and a lost MicroVM id orphans a VM that bills until it expires.
+    One row per user and runtime: a shared row would let concurrent writes
+    clobber each other, and a lost MicroVM id orphans a VM that bills until it
+    expires.
     """
-    table().put_item(Item={"id": runtime, "image": IMAGES[runtime]["image_arn"],
+    table().put_item(Item={"id": key(user, runtime),
+                           "image": IMAGES[runtime]["image_arn"],
                            "data": json.dumps(session)})
 
 
-def forget(runtime):
-    """Drop a runtime's session record after its MicroVM is terminated."""
-    table().delete_item(Key={"id": runtime})
+def forget(user, runtime):
+    """Drop a session record after its MicroVM is terminated."""
+    table().delete_item(Key={"id": key(user, runtime)})
 
 
 def pages(client, method, **params):
@@ -260,9 +293,9 @@ def status(client, runtime, session):
                 observation="Cached application data; AWS lifecycle state is current")
 
 
-def launch(client, runtime):
-    """Run a new MicroVM for a runtime and record its first observation."""
-    existing = load(runtime)
+def launch(client, user, runtime):
+    """Run a new MicroVM for this user and record its first observation."""
+    existing = load(user, runtime)
     if existing and state_of(client, existing["id"]) != "TERMINATED":
         raise ValueError("Terminate the existing session first")
 
@@ -285,15 +318,15 @@ def launch(client, runtime):
         logging={"disabled": {}})  # Guest logs would carry submitted code.
 
     session = {"id": response["microvmId"], "endpoint": response["endpoint"]}
-    save(runtime, session)  # Persist BEFORE the first HTTP call, so cleanup finds it.
+    save(user, runtime, session)  # Persist BEFORE the first call, so cleanup finds it.
     wait(client, session["id"], "RUNNING")
     session["snapshot"] = call(client, session, "/state")
     session["launch_to_first_response_ms"] = round((time.perf_counter() - start) * 1000, 1)
-    save(runtime, session)
+    save(user, runtime, session)
     return status(client, runtime, session)
 
 
-def act(client, runtime, action, code, job=None):
+def act(client, user, runtime, action, code, job=None):
     """Dispatch one lifecycle action against a runtime's session.
 
     Args:
@@ -304,10 +337,12 @@ def act(client, runtime, action, code, job=None):
         job: Job id, for "result" only.
     """
     if action == "launch":
-        return launch(client, runtime)
+        return launch(client, user, runtime)
 
-    session = load(runtime)
+    session = load(user, runtime)
     if not session:
+        if action == "reset":
+            return launch(client, user, runtime)     # nothing to discard
         raise ValueError("Launch this runtime first")
 
     if action == "result":
@@ -322,11 +357,17 @@ def act(client, runtime, action, code, job=None):
         session["before_suspend"] = call(client, session, "/state")
         client.suspend_microvm(microvmIdentifier=session["id"])
         wait(client, session["id"], "SUSPENDED")
-    elif action == "terminate":
+    elif action in ("terminate", "reset"):
         if state_of(client, session["id"]) != "TERMINATED":
             client.terminate_microvm(microvmIdentifier=session["id"])
+            # Blocking here is the entire reason reset is one action rather
+            # than advice to call terminate and then launch: launch refuses
+            # while the old MicroVM is still winding down, and termination is
+            # not instant.
             wait(client, session["id"], "TERMINATED")
-        forget(runtime)
+        forget(user, runtime)
+        if action == "reset":
+            return launch(client, user, runtime)
         return {"runtime": runtime, "id": session["id"], "state": "TERMINATED"}
     else:
         # Both wake and execute send real traffic, which is what auto-resumes a
@@ -336,11 +377,11 @@ def act(client, runtime, action, code, job=None):
         # Returns a job id in milliseconds; the work continues in the VM.
         result = call(client, session, "/execute", {"code": code}) if action == "execute" else None
         session["snapshot"] = call(client, session, "/state")
-        save(runtime, session)
+        save(user, runtime, session)
         return dict(status(client, runtime, session), result=result,
                     state_before_request=before)
 
-    save(runtime, session)
+    save(user, runtime, session)
     return status(client, runtime, session)
 
 
@@ -359,30 +400,70 @@ def response(code, data):
             "body": json.dumps(data)}
 
 
-def authorized(event):
-    """Check the shared demo passphrase.
+def caller(event):
+    """Resolve the Cognito access token on a request to this user's email.
 
-    compare_digest rather than == so the comparison does not leak the
-    passphrase's length or prefix through timing. Header names arrive
-    lowercased in payload format 2.0.
+    The same check serves the SPA and the MCP connector, which is the point:
+    one identity, so signing in with a browser and connecting with Claude
+    reach the same sandbox. Returns None when the token is missing or invalid.
     """
-    headers = event.get("headers") or {}
-    supplied = headers.get("x-demo-passphrase", "")
-    return hmac.compare_digest(supplied, DEMO_PASSPHRASE)
+    return mcp.get_auth_user(event)
+
+
+def run_tool(tool_name, arguments, user):
+    """Execute one MCP tool. Injected into mcp.handle_mcp.
+
+    The tool surface is deliberately the controller's own action set, so the
+    browser and Claude drive identical code -- there is no second
+    implementation to drift.
+    """
+    client = microvms()
+    runtime = RUNTIMES[0]
+    action = TOOL_ACTIONS[tool_name]
+
+    if action == "config":
+        return {"presets": presets_for(runtime), "spec": spec(runtime)}
+    if action == "status":
+        session = load(user, runtime)
+        if not session:
+            return {"state": "NONE", "note": "No sandbox. Call launch_session."}
+        return status(client, runtime, session)
+
+    return act(client, user, runtime, action,
+               arguments.get("code", ""), arguments.get("job", ""))
 
 
 def api(event, context):
-    """Handle one API Gateway HTTP API request."""
-    if not authorized(event):
-        return response(401, {"error": "Wrong or missing demo passphrase"})
+    """Handle one API Gateway HTTP API request.
+
+    Three families of route, and only the first is authenticated here:
+      /api/*     the SPA, carrying a Cognito access token
+      /mcp       the connector, carrying the same kind of token (checked in
+                 mcp.handle_mcp, which needs the email rather than a boolean)
+      /oauth/*   the OAuth proxy, which IS the authentication and so cannot
+                 require it
+    """
+    http = (event.get("requestContext") or {}).get("http") or {}
+    route = f'{http.get("method", "")} {event.get("rawPath", "")}'.strip()
+
+    if route == "GET /.well-known/oauth-authorization-server":
+        return oauth_metadata(event)
+    if route == "POST /oauth/register":
+        return oauth_register(event)
+    if route == "GET /authorize":
+        return oauth_authorize(event)
+    if route == "GET /oauth/callback":
+        return oauth_callback(event)
+    if route == "POST /oauth/token":
+        return oauth_token(event)
+    if route == "POST /mcp":
+        return mcp.handle_mcp(event, run_tool)
+
+    user = caller(event)
+    if not user:
+        return response(401, {"error": "Sign in first"})
     try:
         client = microvms()
-        # Built from method and path rather than routeKey, which a Function
-        # URL event does not carry -- so this works behind either front door.
-        # The method and path are still payload-format-2.0 shaped, so rebuild
-        # the same "METHOD /path" key the branches below already compare.
-        http = (event.get("requestContext") or {}).get("http") or {}
-        route = f'{http.get("method", "")} {event.get("rawPath", "")}'.strip()
 
         if route == "GET /api/config":
             return response(200, {
@@ -394,7 +475,7 @@ def api(event, context):
         if route == "GET /api/status":
             result = {}
             for runtime in RUNTIMES:
-                session = load(runtime)
+                session = load(user, runtime)
                 if session:
                     result[runtime] = status(client, runtime, session)
             return response(200, result)
@@ -415,7 +496,7 @@ def api(event, context):
             # rather than trusted: hex only, and the length the VM issues.
             if action == "result" and not re.fullmatch(r"[0-9a-f]{1,32}", job):
                 raise ValueError("Invalid job id")
-            return response(200, act(client, runtime, action, code, job))
+            return response(200, act(client, user, runtime, action, code, job))
 
         return response(404, {"error": "Not found"})
     except (ValueError, KeyError, TypeError) as exc:

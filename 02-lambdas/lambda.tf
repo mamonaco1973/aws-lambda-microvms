@@ -43,7 +43,12 @@ resource "aws_lambda_function" "api" {
 
       BASE_IMAGE_ARN     = local.base_image_arn
       BASE_IMAGE_VERSION = var.base_image_version
-      DEMO_PASSPHRASE    = random_pet.passphrase.id
+      # Cognito, shared by the SPA and the MCP connector.
+      COGNITO_DOMAIN    = aws_cognito_user_pool_domain.this.domain
+      OAUTH_TABLE_NAME  = aws_dynamodb_table.oauth_state.name
+      MCP_CLIENT_ID     = aws_cognito_user_pool_client.mcp.id
+      MCP_CLIENT_SECRET = aws_cognito_user_pool_client.mcp.client_secret
+      APP_URL           = aws_apigatewayv2_api.this.api_endpoint
 
       # The guest's own identity, and the bucket the AWS CLI preset reads.
       MICROVM_ROLE_ARN = aws_iam_role.microvm.arn

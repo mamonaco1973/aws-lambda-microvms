@@ -152,8 +152,10 @@ terraform -chdir=02-lambdas apply -auto-approve -input=false \
 # ------------------------------------------------------------------------------
 # BUILD THE WEB APPLICATION
 # ------------------------------------------------------------------------------
-# config.json carries only the API URL. The demo passphrase is deliberately
-# absent: config.json is world-readable, so anything in it is public.
+# config.json carries the API URL and the SPA's public Cognito client id and
+# hosted-UI domain. All three are public by design -- a public OAuth client is
+# what PKCE exists to make safe -- which is just as well, because config.json
+# is world-readable.
 # ------------------------------------------------------------------------------
 echo "NOTE: Building the web application..."
 

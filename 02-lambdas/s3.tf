@@ -32,8 +32,9 @@ resource "aws_s3_bucket_policy" "web" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow", Principal = "*", Action = "s3:GetObject"
-      Resource = [for file in ["index.html", "app.js", "style.css", "config.json"] : "${aws_s3_bucket.web.arn}/${file}"]
+      Effect = "Allow", Principal = "*", Action = "s3:GetObject"
+      Resource = [for file in ["index.html", "callback.html", "app.js",
+      "style.css", "config.json"] : "${aws_s3_bucket.web.arn}/${file}"]
     }]
   })
 

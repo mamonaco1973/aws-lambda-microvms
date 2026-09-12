@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Cache-Control"
+        content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cognito Callback</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 16px;
+    }
+    .card {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    h2 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b1220;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h2>Signing you in…</h2>
+    <div id="msg">Processing Cognito response…</div>
+    <pre id="log"></pre>
+  </div>
+
+<script>
+/* =============================================================================
+   Helpers
+============================================================================= */
+const elMsg = document.getElementById("msg");
+const elLog = document.getElementById("log");
+
+function log(msg) {
+  elLog.textContent += msg + "\n";
+}
+
+function fail(msg) {
+  elMsg.textContent = "Sign-in failed.";
+  log("ERROR: " + msg);
+  throw new Error(msg);
+}
+
+/* =============================================================================
+   Main
+============================================================================= */
+(async function main() {
+  try {
+    // -------------------------------------------------------------------------
+    // Load runtime config
+    // -------------------------------------------------------------------------
+    const cfgRes = await fetch("/config.json", { cache: "no-store" });
+    if (!cfgRes.ok) {
+      fail("Unable to load /config.json (" + cfgRes.status + ")");
+    }
+    const cfg = await cfgRes.json();
+
+    const {
+      cognitoDomain,
+      clientId,
+      redirectUri
+    } = cfg;
+
+    if (!cognitoDomain || !clientId || !redirectUri) {
+      fail("config.json missing required fields");
+    }
+
+    log("Loaded config.json");
+    log("cognitoDomain = " + cognitoDomain);
+    log("clientId      = " + clientId);
+    log("redirectUri   = " + redirectUri);
+
+    // -------------------------------------------------------------------------
+    // Parse callback params
+    // -------------------------------------------------------------------------
+    const url = new URL(window.location.href);
+    const code  = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const err   = url.searchParams.get("error");
+    const errD  = url.searchParams.get("error_description");
+
+    log("href = " + window.location.href);
+
+    if (err) {
+      fail(err + (errD ? " - " + errD : ""));
+    }
+
+    if (!code) {
+      fail("Missing authorization code");
+    }
+
+    // -------------------------------------------------------------------------
+    // Validate state (recommended)
+    // -------------------------------------------------------------------------
+    const expectedState = sessionStorage.getItem("oauth_state");
+    if (expectedState && state !== expectedState) {
+      fail("State mismatch");
+    }
+
+    // -------------------------------------------------------------------------
+    // PKCE verifier
+    // -------------------------------------------------------------------------
+    const codeVerifier = sessionStorage.getItem("pkce_code_verifier");
+    if (!codeVerifier) {
+      fail(
+        "Missing PKCE code verifier. Login must be initiated by the SPA."
+      );
+    }
+
+    elMsg.textContent = "Exchanging authorization code for tokens…";
+
+    // -------------------------------------------------------------------------
+    // Exchange code → tokens
+    // -------------------------------------------------------------------------
+    const tokenUrl = "https://" + cognitoDomain + "/oauth2/token";
+
+    const body = new URLSearchParams();
+    body.set("grant_type", "authorization_code");
+    body.set("client_id", clientId);
+    body.set("code", code);
+    body.set("redirect_uri", redirectUri);
+    body.set("code_verifier", codeVerifier);
+
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      fail("Token endpoint error " + res.status + ": " + text);
+    }
+
+    const tok = JSON.parse(text);
+
+    if (!tok.access_token) {
+      fail("No access_token returned");
+    }
+
+    // -------------------------------------------------------------------------
+    // Store tokens (session-scoped)
+    // -------------------------------------------------------------------------
+    sessionStorage.setItem("access_token", tok.access_token);
+    if (tok.id_token) {
+      sessionStorage.setItem("id_token", tok.id_token);
+    }
+    if (tok.refresh_token) {
+      sessionStorage.setItem("refresh_token", tok.refresh_token);
+    }
+    if (tok.expires_in) {
+      sessionStorage.setItem("expires_in", String(tok.expires_in));
+    }
+    sessionStorage.setItem("token_received_at", String(Date.now()));
+
+    // Cleanup one-time values
+    sessionStorage.removeItem("pkce_code_verifier");
+    sessionStorage.removeItem("oauth_state");
+
+    // Clean URL
+    window.history.replaceState({}, document.title, url.origin + url.pathname);
+
+    elMsg.textContent = "Signed in. Redirecting…";
+    log("Token exchange successful");
+
+    // -------------------------------------------------------------------------
+    // Redirect back to SPA
+    // -------------------------------------------------------------------------
+    window.location.href = url.origin + "/index.html";
+  } catch (e) {
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>

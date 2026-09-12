@@ -23,7 +23,8 @@ cd "$(dirname "$0")"
 IMAGES=$(terraform    -chdir=01-microvms output -json images          2>/dev/null || true)
 APP_URL=$(terraform   -chdir=02-lambdas  output -raw  web_url         2>/dev/null || true)
 API_BASE=$(terraform  -chdir=02-lambdas  output -raw  api_url         2>/dev/null || true)
-PASSPHRASE=$(terraform -chdir=02-lambdas output -raw  demo_passphrase 2>/dev/null || true)
+MCP_URL=$(terraform   -chdir=02-lambdas  output -raw  mcp_url         2>/dev/null || true)
+USER_POOL_ID=$(terraform -chdir=02-lambdas output -raw cognito_user_pool_id 2>/dev/null || true)
 
 if [ -z "${IMAGES}" ] || [ -z "${APP_URL}" ] || [ -z "${API_BASE}" ]; then
   echo "ERROR: Could not read Terraform outputs. Run ./apply.sh first."
@@ -256,15 +257,15 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
 done
 
 # ------------------------------------------------------------------------------
-# The controller refuses a request without the demo passphrase
+# The controller refuses an unauthenticated request
 # ------------------------------------------------------------------------------
 echo
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${API_BASE}/api/status")
 if [[ "${STATUS}" != "401" ]]; then
-  echo "ERROR: Controller API returned ${STATUS} without a passphrase; expected 401."
+  echo "ERROR: Controller API returned ${STATUS} with no token; expected 401."
   exit 1
 fi
-echo "NOTE: Controller API rejects requests with no demo passphrase (401)."
+echo "NOTE: Controller API rejects requests with no access token (401)."
 
 # ------------------------------------------------------------------------------
 # Deployment Summary
@@ -275,6 +276,12 @@ echo "  Lambda MicroVMs — Deployment validated!"
 echo "================================================================================="
 echo "  App        : ${APP_URL}"
 echo "  API        : ${API_BASE}"
-echo "  Passphrase : ${PASSPHRASE}"
+echo "  MCP        : ${MCP_URL}"
+echo
+echo "Sign in with a Cognito user. There is no self-service sign-up, so create"
+echo "one first:"
+echo "  aws cognito-idp admin-create-user --user-pool-id ${USER_POOL_ID} \\"
+echo "    --username you@example.com --user-attributes Name=email,Value=you@example.com \\"
+echo "    Name=email_verified,Value=true"
 echo "================================================================================="
 echo ""
