@@ -13,11 +13,12 @@ Bash also proves the platform contract needs no SDK. The lifecycle hooks are
 plain HTTP on a port you declare, so a runtime AWS never shipped a client for
 works like any other.
 
-**The API is a Lambda Function URL, not an API Gateway.** That is deliberate and
-it is the second thing this project demonstrates: an API Gateway integration is
-capped at 30 seconds and cannot be raised, so a cell that installs a package
-inside the MicroVM is impossible behind one. A Function URL's ceiling is the
-function's own timeout, which makes a 15-minute synchronous request legal.
+**Cells are submitted, not awaited.** That is the second thing this project
+demonstrates. `POST /execute` hands a cell to the shell and returns a job id in
+milliseconds; the browser polls for the answer. Because the MicroVM already
+holds the session's state, it can just as easily hold the job and its result —
+so no HTTP request is ever long, and a cell can run far past the 30-second cap
+every API Gateway has. The ceiling on a cell is the MicroVM's own lifetime.
 
 ![webapp](webapp.png)
 
@@ -35,7 +36,7 @@ Key capabilities demonstrated:
 4. **Snapshot-Safe Identity** – A session nonce is generated in the `/run`
    lifecycle hook, demonstrating why identity must not be baked into a snapshot.
 5. **Infrastructure as Code (IaC)** – Terraform provisions both MicroVM images,
-   a Function URL, Lambda, DynamoDB and S3 web hosting.
+   API Gateway, Lambda, DynamoDB and S3 web hosting.
 
 ![AWS Lambda MicroVMs Diagram](aws-lambda-microvms.png)
 
@@ -68,7 +69,7 @@ of AMIs.
 | Phase | Directory | What it creates |
 |-------|-----------|-----------------|
 | 1 | `01-microvms` | Private source bucket, build role, **one** MicroVM image |
-| 2 | `02-lambdas` | Function URL, controller Lambda, DynamoDB, web bucket |
+| 2 | `02-lambdas` | HTTP API, controller Lambda, DynamoDB, web bucket |
 | 3 | `03-webapp` | Static SPA and the generated `config.json` |
 
 `01-microvms/bash/` holds a Dockerfile and a server implementing the hook
@@ -83,9 +84,9 @@ bash.
 
 ## API Endpoints
 
-Three routes on a **Lambda Function URL**. Every request must carry the demo
-passphrase in an `X-Demo-Passphrase` header — the URL's auth type is `NONE`, so
-the controller is the only thing authenticating anything.
+Three routes on an **API Gateway HTTP API**. Every request must carry the demo
+passphrase in an `X-Demo-Passphrase` header — there is no authorizer, so the
+controller is the only thing authenticating anything.
 
 ### GET /api/config
 
@@ -141,11 +142,10 @@ world-readable from the S3 bucket, so anything shipped in it would be public.
 
 > **This is a demo, not a product.** There is no Cognito, no user pool and no
 > per-user isolation, because five moving parts of authentication taught nothing
-> about MicroVMs. A Function URL has **no throttling at all**, so the passphrase
-> plus the controller's reserved concurrency of 3 is all that stands between a
-> stranger and an endpoint that executes code and launches billable VMs. That is
-> a worse position than the API Gateway stage limits it replaced, accepted
-> knowingly to escape the 30-second cap. Run `./destroy.sh` when you finish.
+> about MicroVMs. The passphrase, the gateway's stage throttle and the
+> controller's reserved concurrency are all that stand between a stranger and an
+> endpoint that executes code and launches billable VMs. Run `./destroy.sh` when
+> you finish.
 
 In the browser, pick a tab and **Launch**. Then run the same cell,
 **Check state**, at four points — it never changes, and the answer does:
@@ -161,8 +161,6 @@ That last row is the point: **image memory** is baked in at build and identical
 in every VM, while **session memory** belongs to one MicroVM and dies with it.
 Run `Update state` repeatedly and `visits` keeps climbing — until you terminate.
 
-Do it in the other tabs and watch the identical output in a different language.
-
 ## Validate the Build
 
 ```bash
@@ -172,8 +170,8 @@ Do it in the other tabs and watch the identical output in a different language.
 Launches a MicroVM, seeds live shell state, suspends it, resumes it with an
 ordinary HTTPS request, and asserts the output is exactly `42 1 validated`.
 It also confirms the MicroVM endpoint rejects unauthenticated requests with
-403 and the controller rejects a missing passphrase with 401. Sessions are terminated on exit,
-including on failure.
+403 and the controller rejects a missing passphrase with 401. Sessions are
+terminated on exit, including on failure.
 
 ## Enumerate the Available Images
 

@@ -2,8 +2,8 @@
 # Controller Lambda — drives the MicroVM lifecycle for the two demo sessions
 # ==============================================================================
 # Launch and resume run from a pre-initialized snapshot in a few seconds, so the
-# controller answers the Function URL synchronously; no queue or worker is
-# involved.
+# controller answers lifecycle calls synchronously. Cells are submitted and
+# polled instead, so no request here is ever long and no queue is involved.
 
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/aws/lambda/${var.name}-api"
@@ -20,17 +20,18 @@ resource "aws_lambda_function" "api" {
   filename         = "${path.module}/../dist/controller.zip"
   source_code_hash = filebase64sha256("${path.module}/../dist/controller.zip")
 
-  # The Function URL's ceiling is this number, so this IS the cell limit the
-  # user experiences: 15 minutes, Lambda's maximum. It exists so a cell can
-  # install packages inside the MicroVM and still answer the same request.
-  timeout     = 900
+  # Short, because nothing here waits for a cell any more: the controller
+  # submits work and polls for it, and the MicroVM holds the result. 30s
+  # covers the slowest thing this function does, which is an auto-resume of a
+  # suspended MicroVM, and it puts the cell's real ceiling back where it
+  # belongs -- the VM's own lifetime, not an HTTP timeout.
+  timeout     = 30
   memory_size = 256
 
-  # API Gateway's stage throttling used to be the only bound on what a stranger
-  # who found the URL could cost. A Function URL has none, so this caps the
-  # damage instead: past three in flight, Lambda throttles before the handler
-  # runs, and each accepted request is what launches a billable MicroVM.
-  reserved_concurrent_executions = 3
+  # A second bound behind the gateway's own throttle. Each accepted request
+  # can launch a billable MicroVM, and polling means many more requests than
+  # before, so the cheap ones must not be able to crowd out a launch.
+  reserved_concurrent_executions = 5
 
   environment {
     variables = {

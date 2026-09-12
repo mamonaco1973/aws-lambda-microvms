@@ -8,12 +8,12 @@ the mutations are still there; terminate, launch and check again and they are
 gone while the build-time values are back. Same cell, three different answers,
 which is the whole distinction between image memory and session memory.
 
-"Beat the gateway" and "Install a package" exist to prove the front door. An
-API Gateway integration is capped at 30 seconds and cannot be raised; this
-project answers from a Lambda Function URL instead, whose ceiling is the
-function's own timeout. The first cell simply outlasts 30 seconds. The second
-does something useful with the room -- installs software into the running VM,
-which then persists like any other session state.
+"Outlast a 30s gateway" and the two installs exist to prove that a cell is
+not bounded by the request that started it. Cells are submitted and polled, so
+the API Gateway in front -- capped at 30 seconds, as they all are -- never sees
+a long request. The sleep makes that visible; the installs do something useful
+with the room, putting software into the running VM where it persists like any
+other session state.
 
 These are conveniences, not a contract. The editor is free-form and the
 controller executes whatever it is sent.

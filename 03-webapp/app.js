@@ -11,6 +11,11 @@ const states = {};              // last known status per runtime
 
 const RUNTIME_LABELS = { bash: 'Bash' };
 
+// How often to ask the MicroVM whether a cell has finished. Fast enough that
+// a short cell still feels immediate, slow enough that a long install is not
+// thousands of requests.
+const POLL_MS = 1000;
+
 const PRESET_LABELS = {
   check: 'Check state',
   update: 'Update state',
@@ -263,6 +268,37 @@ function isLive(runtime) {
   return Boolean(state) && state !== 'TERMINATED' && state !== 'TERMINATING';
 }
 
+// Polls one submitted cell to completion. The MicroVM holds the result, so
+// this can be interrupted and resumed -- a refresh or a dropped connection
+// costs the answer, not the work.
+async function poll(runtime, job, started, output) {
+  for (;;) {
+    await new Promise(resolve => setTimeout(resolve, POLL_MS));
+    const seconds = Math.round((Date.now() - started) / 1000);
+    output.textContent = `Running... ${seconds}s`;
+
+    let status;
+    try {
+      status = await api('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runtime, action: 'result', job }),
+      });
+    } catch (error) {
+      // A poll failing is not the cell failing. Keep polling: the usual cause
+      // is a suspended MicroVM, and the next poll is what resumes it.
+      log(`${RUNTIME_LABELS[runtime] ?? runtime} - poll retrying (${error.message})`, true);
+      continue;
+    }
+
+    const result = status.result || {};
+    if (result.state === 'done') return result.result;
+    if (result.state === 'unknown') {
+      return { ok: false, stdout: 'The MicroVM no longer knows this job. It was terminated or relaunched.' };
+    }
+  }
+}
+
 async function action(runtime, operation) {
   if (busy) return;
 
@@ -304,6 +340,14 @@ Press Launch to start one, then run this cell again.`;
         code: document.querySelector(`.panel[data-runtime="${runtime}"] textarea`).value,
       }),
     });
+    // An execute returns a job id, not an answer -- the cell is still running
+    // inside the MicroVM. Poll for it rather than holding a request open, so
+    // a cell may run far longer than any HTTP timeout in the chain allows.
+    if (operation === 'execute' && data.result && data.result.job) {
+      clearInterval(ticker);       // poll() owns the clock from here
+      if (data.result.note) log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${data.result.note}`, true);
+      data.result = await poll(runtime, data.result.job, started, output);
+    }
     render(runtime, data, ['launch', 'execute', 'wake'].includes(operation));
     const before = data.state_before_request ? ` (before the request: ${data.state_before_request})` : '';
     log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${data.state}${before}`);

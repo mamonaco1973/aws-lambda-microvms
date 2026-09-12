@@ -1,17 +1,19 @@
 """HTTP application and lifecycle-hook listener running inside the MicroVM.
 
-A deliberate line-for-line copy of python/server.py, differing only in the
-worker it launches (worker.sh under bash instead of worker.py). Each runtime
-directory is zipped independently, so it cannot import from a sibling; keeping
-the copy identical is what makes the difference between the two images
-reviewable as a one-line diff. Changes here must be mirrored there.
-
 The supervisor is Python because bash has no usable HTTP server. The session
 runtime -- the process that holds state across suspend and resume -- is bash.
 
+Cells are submitted, not awaited. POST /execute starts a cell and returns a
+job id immediately; GET /result/<id> reports on it. The caller therefore never
+holds a connection open for the length of the work, which is what lets the
+controller in front of this be an ordinary short-lived request -- and lets a
+cell outlive any HTTP timeout anywhere in the chain, up to the VM's own
+lifetime. The job lives in this process's memory, so it survives a suspend
+along with everything else.
+
 Two servers on two ports, deliberately:
 
-  * 8080 serves the application (/state, /execute). Endpoint auth
+  * 8080 serves the application (/state, /execute, /result). Endpoint auth
     tokens are scoped to this port only.
   * 8081 serves the AWS lifecycle hooks. Keeping hooks off the application port
     means a leaked application token cannot drive the session's lifecycle, and the
@@ -36,15 +38,14 @@ import uuid
 # AWS posts lifecycle hooks to this fixed path prefix on the configured port.
 HOOK = "/aws/lambda-microvms/runtime/v1/"
 
-# Longest a single cell may run. This is the innermost of four nested timeouts
-# and so the one that decides what actually happens: it must stay BELOW the
-# controller's read timeout (870s), which is below the Lambda's ceiling (900s),
-# which is what the Function URL allows. Get the order wrong and a long cell
-# returns a gateway error instead of the "killed" message below.
+# Longest a single cell may run. No longer coupled to any HTTP timeout: since
+# the caller polls rather than waits, nothing outside this process cares how
+# long a cell takes. The only real ceiling is the MicroVM's own lifetime.
 #
-# Fourteen minutes exists so a cell can run `dnf install` against the live VM.
-# It is still a usability guard, not a sandbox -- the VM is the boundary.
-CELL_TIMEOUT = 840
+# Set to that lifetime deliberately -- a cell is killed by the VM expiring, not
+# by an arbitrary limit that would have to be justified. Still a usability
+# guard and emphatically not a sandbox: the VM is the security boundary.
+CELL_TIMEOUT = 3600
 
 
 class Lab:
@@ -98,6 +99,7 @@ class Lab:
         self.ticks = 0
         self.events = deque(maxlen=20)
         self.lock = threading.Lock()
+        self.job = None                 # the one in-flight or last-finished cell
         self.dead = False
         self.stop = threading.Event()
         threading.Thread(target=self.heartbeat, daemon=True).start()
@@ -177,16 +179,18 @@ class Lab:
         return {"ok": True}
 
     def execute(self, code):
-        """Run one bash cell in the persistent shell.
+        """Start one bash cell in the persistent shell and return its job id.
+
+        Returns as soon as the cell is handed to the shell, so the caller does
+        not hold a connection for the duration of the work. The result is
+        collected on a background thread and read back with result().
 
         Args:
             code: Shell source to execute in the session's shell.
 
         Returns:
-            The interpreter's result, or an explanatory failure. A cell that
-            overruns CELL_TIMEOUT has its shell killed, which loses the
-            session -- a usability guard for a live demo, emphatically not a
-            security sandbox. The VM boundary is the security boundary.
+            {"job": <id>, "state": "running"}, or a finished-looking failure
+            when the cell could not be started at all.
 
         Raises:
             ValueError: The payload is not a string of acceptable length.
@@ -194,25 +198,82 @@ class Lab:
         if not isinstance(code, str) or len(code) > 12000:
             raise ValueError("Code must be a string of at most 12000 characters")
 
-        # Non-blocking, so a second request reports the collision instead of
-        # queueing behind a cell that may never finish.
-        if not self.lock.acquire(blocking=False):
-            return {"ok": False, "stdout": "Another cell is still running."}
-        try:
+        with self.lock:
+            # One shell, so one cell at a time. Reported rather than queued:
+            # a caller waiting behind a cell that may never finish has no way
+            # to tell that from its own cell being slow.
+            if self.job and self.job["state"] == "running":
+                return {"job": self.job["id"], "state": "running",
+                        "note": "Another cell is still running."}
             if self.dead or self.worker.poll() is not None:
-                return {"ok": False, "stdout": "Worker is dead; terminate and launch a fresh session."}
+                return self._finished_job(
+                    {"ok": False,
+                     "stdout": "Worker is dead; terminate and launch a fresh session."})
+
+            job_id = uuid.uuid4().hex[:8]
+            self.job = {"id": job_id, "state": "running", "started": time.time()}
             self.worker.stdin.write(json.dumps({"code": code}) + "\n")
             self.worker.stdin.flush()
-            try:
-                result = self.responses.get(timeout=CELL_TIMEOUT)
-            except queue.Empty:
-                self.worker.kill()
-                self.worker.wait(timeout=5)
-                self.dead = True
-                result = {"ok": False, "stdout": f"Cell exceeded {CELL_TIMEOUT}s. Worker killed; state is lost. Launch a fresh session."}
-            return result
-        finally:
-            self.lock.release()
+
+        threading.Thread(target=self.collect, args=(job_id,), daemon=True).start()
+        return {"job": job_id, "state": "running"}
+
+    def _finished_job(self, result):
+        """Record a result that was produced without ever reaching the shell."""
+        job_id = uuid.uuid4().hex[:8]
+        self.job = {"id": job_id, "state": "done", "started": time.time(),
+                    "result": result}
+        return {"job": job_id, "state": "done"}
+
+    def collect(self, job_id):
+        """Wait for one cell's result and file it against its job.
+
+        Runs on its own thread so the HTTP server is never blocked by a cell.
+        A cell that overruns CELL_TIMEOUT has its shell killed, which loses the
+        session -- a usability guard for a live demo, emphatically not a
+        security sandbox. The VM boundary is the security boundary.
+        """
+        try:
+            result = self.responses.get(timeout=CELL_TIMEOUT)
+        except queue.Empty:
+            self.worker.kill()
+            self.worker.wait(timeout=5)
+            self.dead = True
+            result = {"ok": False,
+                      "stdout": f"Cell exceeded {CELL_TIMEOUT}s. Worker killed; "
+                                "state is lost. Launch a fresh session."}
+        with self.lock:
+            # Guard against a stale collector: if the session was terminated
+            # and relaunched, this thread's job is no longer the current one.
+            if self.job and self.job["id"] == job_id:
+                self.job["state"] = "done"
+                self.job["result"] = result
+
+    def result(self, job_id):
+        """Report on a submitted cell.
+
+        Args:
+            job_id: The id returned by execute().
+
+        Returns:
+            {"state": "running", "elapsed_s": n} while the cell runs, or
+            {"state": "done", "result": {...}} once it has finished. An id this
+            process has never seen reports "unknown" rather than an error --
+            after a terminate and relaunch, an old id is stale, not invalid.
+
+        Note:
+            elapsed_s is wall clock, so a cell that was suspended part way
+            through reports the suspended time too. That is accurate: the wall
+            clock really did advance while the VM was frozen.
+        """
+        with self.lock:
+            job = self.job
+            if not job or job["id"] != job_id:
+                return {"state": "unknown"}
+            if job["state"] == "running":
+                return {"state": "running",
+                        "elapsed_s": round(time.time() - job["started"])}
+            return {"state": "done", "result": job["result"]}
 
     def close(self):
         """Stop the heartbeat and shut the interpreter down cleanly."""
@@ -250,8 +311,14 @@ def handler(lab, hooks=False):
             self.wfile.write(body)
 
         def do_GET(self):
-            if not hooks and self.path in {"/state", "/health"}:
+            if hooks:
+                self.send_json({"error": "Not found"}, 404)
+            elif self.path in {"/state", "/health"}:
                 self.send_json(lab.state())
+            elif self.path.startswith("/result/"):
+                # Polled, so it must stay cheap: no lock contention with a
+                # running cell beyond the dictionary read inside result().
+                self.send_json(lab.result(self.path[len("/result/"):]))
             else:
                 self.send_json({"error": "Not found"}, 404)
 

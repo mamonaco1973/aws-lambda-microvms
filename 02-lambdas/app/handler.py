@@ -1,9 +1,14 @@
-"""HTTP API that drives the MicroVM lifecycle for every runtime, synchronously.
+"""HTTP API that drives the MicroVM lifecycle for every runtime.
 
-Every action is synchronous. Launch and resume run from a pre-initialized
-Firecracker snapshot in a few seconds, and a long cell is carried by the
-Function URL's 15-minute ceiling rather than a queue -- which is the whole
-reason this is not behind an API Gateway, where 30 seconds is the hard cap.
+Lifecycle actions are synchronous: launch and resume run from a pre-initialized
+Firecracker snapshot in a few seconds, so there is nothing worth queueing.
+
+Cells are not. "execute" submits a cell and gets a job id back; "result" polls
+for it. The work runs inside the MicroVM, which already holds the session's
+state and can just as easily hold its answer -- so no request here is ever
+long, and a cell may run far past any HTTP timeout in the chain. That is what
+lets this sit behind an ordinary API Gateway, whose 30-second cap would
+otherwise be the limit on how long a cell could run.
 
 One image, a persistent bash shell. The runtime map is still what drives this
 module, so a second image needs no change here.
@@ -14,6 +19,7 @@ state lives exclusively inside each MicroVM and is never serialized out.
 import hmac
 import json
 import os
+import re
 import time
 import traceback
 import urllib.error
@@ -25,7 +31,7 @@ from botocore.config import Config
 
 from presets import PRESETS
 
-ACTIONS = {"launch", "suspend", "wake", "execute", "terminate"}
+ACTIONS = {"launch", "suspend", "wake", "execute", "result", "terminate"}
 
 REGION = os.environ["AWS_REGION"]
 IMAGES = json.loads(os.environ["IMAGES"])          # {"python": {...}, "node": {...}, ...}
@@ -232,11 +238,13 @@ def call(client, session, path, body=None):
         endpoint + path, data=None if body is None else json.dumps(body).encode(),
         headers=headers)
     start = time.perf_counter()
-    # Sits just inside the Lambda's own 900s ceiling so a cell that runs for
-    # minutes -- a package install inside the MicroVM -- is not cut off here.
-    # Whatever this is, it must be the SMALLEST of the outer timeouts or the
-    # caller sees a Lambda timeout instead of a JSON error it can render.
-    with urllib.request.urlopen(request, timeout=870) as response:
+    # Every call here is short now: submitting a cell returns a job id, and
+    # polling returns a status. Nothing waits for the work itself, so this no
+    # longer has to be sized against the Lambda's ceiling. It must still be the
+    # SMALLEST of the outer timeouts, or the caller sees a Lambda timeout
+    # instead of a JSON error it can render. An auto-resume can take a few
+    # seconds, which is what this has to cover.
+    with urllib.request.urlopen(request, timeout=25) as response:
         value = json.load(response)
     value["round_trip_ms"] = round((time.perf_counter() - start) * 1000, 1)
     return value
@@ -285,14 +293,28 @@ def launch(client, runtime):
     return status(client, runtime, session)
 
 
-def act(client, runtime, action, code):
-    """Dispatch one lifecycle action against a runtime's session."""
+def act(client, runtime, action, code, job=None):
+    """Dispatch one lifecycle action against a runtime's session.
+
+    Args:
+        client: A lambda-microvms client.
+        runtime: Which runtime's session to act on.
+        action: One of ACTIONS.
+        code: Cell source, for "execute" only.
+        job: Job id, for "result" only.
+    """
     if action == "launch":
         return launch(client, runtime)
 
     session = load(runtime)
     if not session:
         raise ValueError("Launch this runtime first")
+
+    if action == "result":
+        # The hot path: called once a second while a cell runs, so it does the
+        # least possible work -- no state sampling, no DynamoDB write.
+        return {"runtime": runtime, "result": call(client, session,
+                                                   f"/result/{job}")}
 
     if action == "suspend":
         # Sample before suspending. Once suspended, nothing may touch the
@@ -311,6 +333,7 @@ def act(client, runtime, action, code):
         # suspended VM. Capturing the state first is what lets the panel show
         # that the request itself did the waking.
         before = state_of(client, session["id"])
+        # Returns a job id in milliseconds; the work continues in the VM.
         result = call(client, session, "/execute", {"code": code}) if action == "execute" else None
         session["snapshot"] = call(client, session, "/state")
         save(runtime, session)
@@ -328,8 +351,8 @@ def act(client, runtime, action, code):
 def response(code, data):
     """Build a Lambda proxy response.
 
-    The Function URL consumes the same shape API Gateway did, so this is
-    unchanged by the move off the gateway.
+    API Gateway HTTP APIs and Function URLs consume the same shape, so this
+    is unchanged by moving between them.
     """
     return {"statusCode": code,
             "headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
@@ -349,12 +372,13 @@ def authorized(event):
 
 
 def api(event, context):
-    """Handle one Function URL request."""
+    """Handle one API Gateway HTTP API request."""
     if not authorized(event):
         return response(401, {"error": "Wrong or missing demo passphrase"})
     try:
         client = microvms()
-        # A Function URL event has no routeKey -- that is an API Gateway field.
+        # Built from method and path rather than routeKey, which a Function
+        # URL event does not carry -- so this works behind either front door.
         # The method and path are still payload-format-2.0 shaped, so rebuild
         # the same "METHOD /path" key the branches below already compare.
         http = (event.get("requestContext") or {}).get("http") or {}
@@ -386,7 +410,12 @@ def api(event, context):
             code = payload.get("code", "")
             if not isinstance(code, str) or len(code.encode()) > 16000:
                 raise ValueError("Code must be a string of at most 16000 bytes")
-            return response(200, act(client, runtime, action, code))
+            job = payload.get("job", "")
+            # Interpolated into the VM's URL path, so it is constrained here
+            # rather than trusted: hex only, and the length the VM issues.
+            if action == "result" and not re.fullmatch(r"[0-9a-f]{1,32}", job):
+                raise ValueError("Invalid job id")
+            return response(200, act(client, runtime, action, code, job))
 
         return response(404, {"error": "Not found"})
     except (ValueError, KeyError, TypeError) as exc:
