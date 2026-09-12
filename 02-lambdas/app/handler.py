@@ -15,6 +15,7 @@ import hmac
 import json
 import os
 import time
+import traceback
 import urllib.error
 import urllib.request
 import uuid
@@ -393,5 +394,9 @@ def api(event, context):
     except (RuntimeError, TimeoutError) as exc:
         return response(409, {"error": str(exc)})
     except Exception:
-        # Never leak SDK headers, endpoint tokens or stack traces to a browser.
+        # The browser gets a generic message -- an SDK error carries headers,
+        # endpoint tokens and stack frames. CloudWatch gets the real one,
+        # because without it an AccessDenied from RunMicrovm looks exactly
+        # like a service outage, with nowhere to look up which it was.
+        traceback.print_exc()
         return response(503, {"error": "AWS controller request failed. Check service availability."})
