@@ -118,6 +118,46 @@ echo seeded' ;;
   esac
 }
 
+# ------------------------------------------------------------------------------
+# Helper: run one cell to completion
+# ------------------------------------------------------------------------------
+# /execute submits and returns a job id; the result is collected by polling
+# /result/<id>. Echoes the finished result object, so callers read .ok and
+# .stdout from it exactly as they did when /execute answered directly.
+#
+# A submission that never started (busy or dead shell) comes back with no job
+# id and already looks like a finished result, so it is passed straight
+# through.
+run_cell() {
+  local submitted job state
+  submitted=$(vm_request POST /execute "$(jq -n --arg code "$1" '{code: $code}')") || return 1
+  job=$(echo "${submitted}" | jq -r '.job // empty')
+  if [[ -z "${job}" ]]; then
+    echo "${submitted}"
+    return 0
+  fi
+
+  # Bounded so a wedged cell fails the run instead of hanging it. Generous
+  # because a resume happens on the first poll after a suspend.
+  local waited=0
+  while (( waited < 300 )); do
+    local polled
+    polled=$(vm_request GET "/result/${job}") || return 1
+    state=$(echo "${polled}" | jq -r '.state')
+    if [[ "${state}" == "done" ]]; then
+      echo "${polled}" | jq -c '.result'
+      return 0
+    fi
+    if [[ "${state}" == "unknown" ]]; then
+      echo '{"ok": false, "stdout": "The MicroVM no longer knows this job."}'
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  echo '{"ok": false, "stdout": "Cell did not finish within 300s."}'
+}
+
 resume_code() {
   case "$1" in
     # A function definition surviving the checkpoint is what next_square proves
@@ -162,7 +202,7 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
 
   # ---- Seed live interpreter state ------------------------------------------
   echo "NOTE: Seeding interpreter state..."
-  SEEDED=$(vm_request POST /execute "$(jq -n --arg code "$(seed_code "${RUNTIME}")" '{code: $code}')") || exit 1
+  SEEDED=$(run_cell "$(seed_code "${RUNTIME}")") || exit 1
   echo "${SEEDED}" | jq -e '.ok == true' >/dev/null || {
     echo "ERROR: Seed cell failed: $(echo "${SEEDED}" | jq -r '.stdout')"
     exit 1
@@ -179,7 +219,7 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
 
   # ---- Resume with ordinary traffic and verify surviving state ---------------
   echo "NOTE: Sending an HTTPS request to auto-resume the MicroVM..."
-  RESUMED=$(vm_request POST /execute "$(jq -n --arg code "$(resume_code "${RUNTIME}")" '{code: $code}')") || {
+  RESUMED=$(run_cell "$(resume_code "${RUNTIME}")") || {
     echo "ERROR: The ${RUNTIME} MicroVM did not resume on incoming traffic."
     exit 1
   }
