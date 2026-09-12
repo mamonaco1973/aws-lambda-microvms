@@ -43,14 +43,19 @@ resource "aws_iam_role_policy" "api" {
         Action   = ["lambda:ListMicrovms"]
         Resource = "*"
       },
-      # RunMicrovm hands the execution role to the guest, and IAM treats that
-      # as passing a role. Scoped to this one role: without the condition, the
-      # controller could give a MicroVM any role in the account.
+      # RunMicrovm hands the execution role to the guest, which IAM may treat
+      # as passing a role. AWS's own least-privilege example for these APIs
+      # omits PassRole entirely, so whether it is required is unconfirmed --
+      # granted here because an unnecessary grant is harmless and a missing one
+      # fails RunMicrovm with an opaque AccessDenied.
+      #
+      # Deliberately NO iam:PassedToService condition. If the service does not
+      # populate that key, the condition never matches and this statement
+      # silently stops granting anything.
       {
-        Effect    = "Allow"
-        Action    = ["iam:PassRole"]
-        Resource  = aws_iam_role.microvm.arn
-        Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } }
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.microvm.arn
       },
       {
         Effect = "Allow"
