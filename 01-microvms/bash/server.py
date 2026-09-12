@@ -42,10 +42,11 @@ HOOK = "/aws/lambda-microvms/runtime/v1/"
 # the caller polls rather than waits, nothing outside this process cares how
 # long a cell takes. The only real ceiling is the MicroVM's own lifetime.
 #
-# Set to that lifetime deliberately -- a cell is killed by the VM expiring, not
-# by an arbitrary limit that would have to be justified. Still a usability
-# guard and emphatically not a sandbox: the VM is the security boundary.
-CELL_TIMEOUT = 3600
+# Set to that lifetime -- the service maximum of 8 hours -- deliberately: a
+# cell is killed by the VM expiring, not by an arbitrary limit that would have
+# to be justified. Still a usability guard and emphatically not a sandbox: the
+# VM is the security boundary.
+CELL_TIMEOUT = 28800
 
 
 class Lab:

@@ -29,6 +29,44 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 MCP_VERSION  = "2025-03-26"
+
+# Returned to the client on initialize. This is the only place to put advice
+# that applies across tools rather than to one of them, and every line here was
+# paid for by an actual failed session.
+SERVER_INSTRUCTIONS = """This sandbox is a persistent bash shell inside a Lambda MicroVM. The shell
+process IS the session: its variables, files, working directory and installed
+packages are the state, and they survive suspend and resume.
+
+That has one consequence worth internalising before writing any cell:
+
+  DO NOT put `set -e` at the top of a cell.
+
+The shell is not a script you are running -- it is the session you are running
+inside. Under `set -e` any trivial failure exits the shell, and a shell that
+exits is a dead worker and a lost sandbox. A mistyped flag on a package manager
+becomes a terminated session, with every installed package and file gone. This
+has already happened: `dnf install -y -q unzip` failed with "Unknown option
+-q", `set -e` turned that into an exit, and the whole session died.
+
+Instead:
+  * Let commands fail. A failed cell is reported as data; the session survives.
+  * Run steps one cell at a time when provisioning, so you can see which step
+    failed instead of losing the shell to the first one.
+  * If you need fail-fast for a group of commands, put them in a SUBSHELL --
+    `( set -e; cd /tmp; ... )` -- which cannot take the session down with it.
+
+Other things that are true here:
+  * The package manager is microdnf presented as `dnf`. It implements a subset:
+    there is no `-q`, no `search`, no `info`, no `provides`. Use `dnf repoquery`
+    to search.
+  * run_cell returns a job id before the work is done. Always call get_result,
+    and keep polling while it says "running" -- installs take minutes and that
+    is normal.
+  * Cells cannot prompt. stdin is closed, so `read` gets EOF immediately; pass
+    `-y` to anything that would ask.
+  * One cell runs at a time. A second run_cell while one is running is refused,
+    not queued.
+  * If the shell does die, reset_session gives you a clean one."""
 _SERVER_NAME = "microvm-sandbox-mcp"
 _SERVER_VER  = "1.0.0"
 
@@ -57,7 +95,15 @@ TOOL_REGISTRY = [
             "IMMEDIATELY, before the command has finished -- always call "
             "get_result afterwards to collect the output. Variables, files, "
             "working directory and installed packages persist between calls "
-            "and across suspend and resume."
+            "and across suspend and resume.\n\n"
+            "NEVER use `set -e` in a cell. The shell IS the session, so any "
+            "failing command would exit it and destroy the sandbox and "
+            "everything installed in it. Let commands fail and read the "
+            "error -- a failed cell is reported as data and costs nothing. "
+            "For fail-fast on a group of commands use a subshell: "
+            "`( set -e; ... )`.\n\n"
+            "When provisioning, prefer one step per cell, so a failure tells "
+            "you which step failed instead of burying it."
         ),
         "inputSchema": {
             "type": "object",
@@ -221,6 +267,7 @@ def _handle_initialize(req, session_id):
             "protocolVersion": MCP_VERSION,
             "capabilities":    {"tools": {}},
             "serverInfo":      {"name": _SERVER_NAME, "version": _SERVER_VER},
+            "instructions":    SERVER_INSTRUCTIONS,
         },
         extra_headers={"Mcp-Session-Id": session_id},
     )

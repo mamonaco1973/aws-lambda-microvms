@@ -205,7 +205,10 @@ reverse order. Keep the local Terraform state until it succeeds.
 
 Each MicroVM uses the **0.5 GB / 0.25 vCPU baseline** (bursting to 2 GB / 1 vCPU),
 auto-suspends after 30 minutes idle, terminates after 30 minutes suspended, and
-has a 1-hour maximum lifetime. One session per runtime, so at most one VM.
+has an **8-hour maximum lifetime** — the service ceiling. The lifetime is not
+the cost control; auto-suspend is. An idle VM stops costing compute after 30
+minutes and is gone 30 minutes later, so the full 8 hours is only reached by a
+session someone is still using. One session per user.
 
 At ARM rates that baseline costs **$0.0315/hour** while RUNNING
 (0.25 vCPU x $0.0000276944 + 0.5 GB x $0.0000036667 per second) and **nothing**

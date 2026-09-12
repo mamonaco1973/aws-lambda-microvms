@@ -58,7 +58,8 @@ const COMPARISON = [
   ['Idle policy', s => `suspend after ${s.idle_suspend_seconds}s`, null],
   ['Auto-resume', s => (s.auto_resume ? 'on inbound traffic' : 'disabled'), null],
   ['Suspended TTL', s => `terminate after ${s.suspended_ttl_seconds}s`, null],
-  ['Maximum lifetime', s => `${s.max_lifetime_seconds}s (8h ceiling)`, null],
+  ['Maximum lifetime', s => `${s.max_lifetime_seconds / 3600}h (service maximum)`,
+   null],
   ['State', (s, live) => live?.state ?? 'NOT LAUNCHED', 'running / stopped'],
 ];
 
