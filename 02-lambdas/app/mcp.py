@@ -166,7 +166,10 @@ def _get_cognito_userinfo_url():
     global _cognito_userinfo_url
     if not _cognito_userinfo_url:
         domain = os.environ.get("COGNITO_DOMAIN", "")
-        region = boto3.session.Session().region_name
+        # AWS_REGION is set by the Lambda runtime. Read directly rather than
+        # through a boto3 session: this module no longer needs an AWS client
+        # at all, and importing boto3 for one string would be the only reason.
+        region = os.environ["AWS_REGION"]
         _cognito_userinfo_url = (
             f"https://{domain}.auth.{region}.amazoncognito.com/oauth2/userInfo"
         )
