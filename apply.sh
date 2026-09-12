@@ -50,14 +50,12 @@ done
 # ------------------------------------------------------------------------------
 # PACKAGE THE MICROVM APPLICATIONS
 # ------------------------------------------------------------------------------
-# One zip per runtime, each a Dockerfile plus its session server. Lambda builds
-# every image remotely, so no local Docker daemon is involved.
+# One zip per runtime -- a Dockerfile plus its session server. Lambda builds the
+# image remotely, so no local Docker daemon is involved.
 # ------------------------------------------------------------------------------
 echo "NOTE: Packaging the MicroVM applications..."
 
 rm -rf dist && mkdir -p dist
-(cd 01-microvms/python && zip -q -X -r ../../dist/python-app.zip Dockerfile server.py worker.py)
-(cd 01-microvms/node && zip -q -X -r ../../dist/node-app.zip Dockerfile server.js worker.js)
 (cd 01-microvms/bash && zip -q -X -r ../../dist/bash-app.zip Dockerfile server.py worker.sh)
 
 # ------------------------------------------------------------------------------

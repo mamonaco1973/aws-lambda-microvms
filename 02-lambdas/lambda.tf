@@ -19,9 +19,17 @@ resource "aws_lambda_function" "api" {
   filename         = "${path.module}/../dist/controller.zip"
   source_code_hash = filebase64sha256("${path.module}/../dist/controller.zip")
 
-  # Must stay under the API Gateway 29s integration timeout.
-  timeout     = 25
+  # The Function URL's ceiling is this number, so this IS the cell limit the
+  # user experiences: 15 minutes, Lambda's maximum. It exists so a cell can
+  # install packages inside the MicroVM and still answer the same request.
+  timeout     = 900
   memory_size = 256
+
+  # API Gateway's stage throttling used to be the only bound on what a stranger
+  # who found the URL could cost. A Function URL has none, so this caps the
+  # damage instead: past three in flight, Lambda throttles before the handler
+  # runs, and each accepted request is what launches a billable MicroVM.
+  reserved_concurrent_executions = 3
 
   environment {
     variables = {

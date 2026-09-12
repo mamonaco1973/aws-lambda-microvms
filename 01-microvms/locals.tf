@@ -1,14 +1,12 @@
 locals {
   name = "microvms"
 
-  # The runtimes this demo builds. Everything below is derived per runtime, so
-  # adding another (Ruby, R, Julia) means adding one line here plus a directory
-  # containing a Dockerfile and a server that speaks the hook contract --
-  # nothing else in the project needs to know.
+  # One runtime. The map is kept rather than flattened because every resource
+  # below is derived from it, so adding a runtime is still one line plus a
+  # directory -- and because each image carries a one-week minimum storage
+  # charge, so building only what the demo uses is the cheaper default.
   runtimes = {
-    python = "Python 3 persistent interpreter"
-    node   = "Node.js persistent interpreter"
-    bash   = "Bash persistent shell"
+    bash = "Bash persistent shell"
   }
 
   # Source changes produce a new image name, so an old snapshot built from

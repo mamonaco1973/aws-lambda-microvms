@@ -1,11 +1,12 @@
 """HTTP API that drives the MicroVM lifecycle for every runtime, synchronously.
 
-MicroVM launch and resume run from a pre-initialized Firecracker snapshot in a
-few seconds, so every action completes well inside the API Gateway integration
-timeout. That is why there is no queue, no worker and no job table.
+Every action is synchronous. Launch and resume run from a pre-initialized
+Firecracker snapshot in a few seconds, and a long cell is carried by the
+Function URL's 15-minute ceiling rather than a queue -- which is the whole
+reason this is not behind an API Gateway, where 30 seconds is the hard cap.
 
-Every image is launched from the same code path -- Python, Node and Bash -- which
-is the demonstration: the platform is identical, the runtime is yours.
+One image, a persistent bash shell. The runtime map is still what drives this
+module, so a second image needs no change here.
 
 DynamoDB holds only identifiers and the last application sample. Interpreter
 state lives exclusively inside each MicroVM and is never serialized out.
@@ -210,7 +211,11 @@ def call(client, session, path, body=None):
         endpoint + path, data=None if body is None else json.dumps(body).encode(),
         headers=headers)
     start = time.perf_counter()
-    with urllib.request.urlopen(request, timeout=15) as response:
+    # Sits just inside the Lambda's own 900s ceiling so a cell that runs for
+    # minutes -- a package install inside the MicroVM -- is not cut off here.
+    # Whatever this is, it must be the SMALLEST of the outer timeouts or the
+    # caller sees a Lambda timeout instead of a JSON error it can render.
+    with urllib.request.urlopen(request, timeout=870) as response:
         value = json.load(response)
     value["round_trip_ms"] = round((time.perf_counter() - start) * 1000, 1)
     return value
@@ -323,7 +328,11 @@ def api(event, context):
         return response(401, {"error": "Wrong or missing demo passphrase"})
     try:
         client = microvms()
-        route = event.get("routeKey")
+        # A Function URL event has no routeKey -- that is an API Gateway field.
+        # The method and path are still payload-format-2.0 shaped, so rebuild
+        # the same "METHOD /path" key the branches below already compare.
+        http = (event.get("requestContext") or {}).get("http") or {}
+        route = f'{http.get("method", "")} {event.get("rawPath", "")}'.strip()
 
         if route == "GET /api/config":
             return response(200, {

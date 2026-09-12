@@ -9,13 +9,15 @@ let busy = false;
 let active;                     // which runtime tab is showing
 const states = {};              // last known status per runtime
 
-const RUNTIME_LABELS = { python: 'Python', node: 'Node.js', bash: 'Bash' };
+const RUNTIME_LABELS = { bash: 'Bash' };
 
 const PRESET_LABELS = {
   check: 'Check state',
   update: 'Update state',
+  gateway: 'Outlast a 30s gateway',
+  install: 'Install a package',
   failure: 'Raise an error',
-  kill: 'Kill this interpreter',
+  kill: 'Kill this shell',
 };
 
 // -----------------------------------------------------------------------------
@@ -124,7 +126,6 @@ function buildPanel(runtime) {
       <button data-action="terminate">Terminate</button>
     </div>
     <div class="stats">
-      <div class="stat"><small>Background ticks</small><strong data-stat="ticks">-</strong></div>
       <div class="stat"><small>Launch to response</small><strong data-stat="launch">-</strong></div>
       <div class="stat"><small>Last round trip</small><strong data-stat="rtt">-</strong></div>
     </div>
@@ -208,7 +209,6 @@ function render(runtime, data, sampled = false) {
   renderComparison(panel, runtime, data);
 
   if (snapshot) {
-    panel.querySelector('[data-stat="ticks"]').textContent = snapshot.ticks;
     panel.querySelector('[data-stat="launch"]').textContent =
       data.launch_to_first_response_ms === undefined ? '-' : `${data.launch_to_first_response_ms}ms`;
     panel.querySelector('[data-stat="rtt"]').textContent =
@@ -263,6 +263,19 @@ Press Launch to start one, then run this cell again.`;
   busy = true;
   for (const button of document.querySelectorAll('button')) button.disabled = true;
   log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${operation} requested`);
+
+  // A cell can legitimately run for minutes now, so show a clock. Without it a
+  // long install is indistinguishable from a hung page.
+  const output = document.querySelector(`.panel[data-runtime="${runtime}"] pre`);
+  const started = Date.now();
+  let ticker;
+  if (operation === 'execute') {
+    const tick = () => {
+      output.textContent = `Running... ${Math.round((Date.now() - started) / 1000)}s`;
+    };
+    tick();
+    ticker = setInterval(tick, 1000);
+  }
   try {
     const data = await api('/api/action', {
       method: 'POST',
@@ -279,6 +292,7 @@ Press Launch to start one, then run this cell again.`;
   } catch (error) {
     log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${error.message}`, true);
   } finally {
+    clearInterval(ticker);
     busy = false;
     for (const button of document.querySelectorAll('button')) button.disabled = false;
   }

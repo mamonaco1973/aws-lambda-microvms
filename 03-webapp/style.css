@@ -103,7 +103,7 @@ button:disabled { opacity: .4; cursor: default; }
 /* --------------------------------------------------------------------------
    Stats
    -------------------------------------------------------------------------- */
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 22px; }
 .stat { padding: 18px 20px; background: var(--raised); border: 2px solid var(--line); border-radius: 10px; }
 .stat small { display: block; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .stat strong { display: block; font: 700 34px var(--mono); color: var(--amber); padding-top: 8px; }

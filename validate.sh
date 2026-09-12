@@ -1,21 +1,17 @@
 #!/bin/bash
 # ==============================================================================
-# validate.sh — Suspend/Resume Validation for every runtime
+# validate.sh — Suspend/Resume and long-request validation
 # ------------------------------------------------------------------------------
 # Purpose:
-#   For each MicroVM image (Python, Node and Bash):
-#     - Launch a MicroVM from it.
-#     - Seed live interpreter state: a variable, a generator, a file.
-#       (Bash has no generator, so a counter plus a function stands in.)
-#     - Suspend it and confirm AWS reports SUSPENDED.
-#     - Resume it with an ordinary HTTPS request and prove the state survived.
-#     - Terminate the validation session.
-#
-#   Every runtime is asserted against the SAME expected output, which is the
-#   claim this demo makes: the platform behaves identically, the language does
-#   not matter.
-#
-#   Finally prints the application URL and the demo passphrase.
+#   - Launch a MicroVM from the bash image.
+#   - Seed live shell state: variables, a function, a file.
+#   - Suspend it and confirm AWS reports SUSPENDED.
+#   - Resume it with an ordinary HTTPS request and prove the state survived.
+#   - Prove the front door outlasts an API Gateway: one request to the
+#     controller that takes longer than 30 seconds and still returns a result.
+#     This is the whole reason the API is a Lambda Function URL, and it is the
+#     only check here that would have failed before that change.
+#   - Terminate the validation session.
 #
 # Fast-Fail Behavior:
 #   - Exits immediately on command failure, unset variables or failed pipelines.
@@ -38,9 +34,12 @@ if [ -z "${IMAGES}" ] || [ -z "${APP_URL}" ] || [ -z "${API_BASE}" ]; then
   exit 1
 fi
 
-# Every runtime's cells are written to print exactly this, so one assertion
-# covers both languages.
+# The seed/resume pair is written to print exactly this.
 EXPECTED="42 1 validated"
+
+# The gateway proof sleeps this long inside the MicroVM. It only has to exceed
+# API Gateway's 30s hard cap; longer just makes validate.sh slower.
+GATEWAY_PROOF_SECONDS=40
 
 # ------------------------------------------------------------------------------
 # Helper: poll until the MicroVM reaches the requested lifecycle state
@@ -118,16 +117,6 @@ trap cleanup EXIT
 # ------------------------------------------------------------------------------
 seed_code() {
   case "$1" in
-    python) printf '%s' 'balance = 41
-cursor = (n * n for n in range(1000))
-next(cursor)
-Path("note.txt").write_text("validated")
-print("seeded")' ;;
-    node) printf '%s' 'balance = 41;
-cursor = (function* () { for (let n = 0; n < 1000; n++) yield n * n; })();
-cursor.next();
-fs.writeFileSync("note.txt", "validated");
-console.log("seeded");' ;;
     bash) printf '%s' 'balance=41
 cursor=0
 next_square() { square=$((cursor * cursor)); cursor=$((cursor + 1)); }
@@ -139,10 +128,6 @@ echo seeded' ;;
 
 resume_code() {
   case "$1" in
-    python) printf '%s' 'balance += 1
-print(balance, next(cursor), Path("note.txt").read_text())' ;;
-    node) printf '%s' 'balance += 1;
-console.log(balance, cursor.next().value, fs.readFileSync("note.txt", "utf8"));' ;;
     # A function definition surviving the checkpoint is what next_square proves
     # here; the counter it advances is the generator stand-in.
     bash) printf '%s' 'balance=$((balance + 1))
@@ -237,6 +222,64 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
   cleanup
   VM_ID=""
 done
+
+# ------------------------------------------------------------------------------
+# The front door outlasts an API Gateway
+# ------------------------------------------------------------------------------
+# Driven through the controller rather than the MicroVM endpoint, because the
+# thing under test is the front door, not the VM. An API Gateway integration is
+# capped at 30s and would return 504 here no matter what the VM did.
+#
+# This launches its own session: the one validated above was started with the
+# CLI and so is not in the controller's table.
+# ------------------------------------------------------------------------------
+echo
+echo "NOTE: ===== Proving the ${GATEWAY_PROOF_SECONDS}s request survives ====="
+
+api_post() {
+  curl -s --max-time 300 -X POST "${API_BASE}/api/action"     -H "Content-Type: application/json"     -H "X-Demo-Passphrase: ${PASSPHRASE}"     -d "$1"
+}
+
+CONTROLLER_VM=""
+controller_cleanup() {
+  if [[ -n "${CONTROLLER_VM}" ]]; then
+    echo "NOTE: Terminating controller session ${CONTROLLER_VM}..."
+    aws lambda-microvms terminate-microvm --microvm-identifier "${CONTROLLER_VM}" >/dev/null 2>&1 || true
+  fi
+}
+trap 'cleanup; controller_cleanup' EXIT
+
+LAUNCHED=$(api_post '{"runtime":"bash","action":"launch"}')
+CONTROLLER_VM=$(echo "${LAUNCHED}" | jq -r '.id // empty')
+if [[ -z "${CONTROLLER_VM}" ]]; then
+  echo "ERROR: Controller launch failed: ${LAUNCHED}"
+  exit 1
+fi
+echo "NOTE: Controller launched ${CONTROLLER_VM}."
+
+CODE="start=\${SECONDS}; sleep ${GATEWAY_PROOF_SECONDS}; echo slept \$((SECONDS - start))s"
+BODY=$(jq -n --arg c "${CODE}" '{runtime:"bash", action:"execute", code:$c}')
+
+STARTED=${SECONDS}
+SLOW=$(api_post "${BODY}")
+ELAPSED=$((SECONDS - STARTED))
+
+if ! echo "${SLOW}" | jq -e '.result.ok == true' >/dev/null 2>&1; then
+  echo "ERROR: The long request did not come back cleanly after ${ELAPSED}s."
+  echo "ERROR: Response: ${SLOW}"
+  exit 1
+fi
+if (( ELAPSED <= 30 )); then
+  echo "ERROR: Request returned in ${ELAPSED}s, so it never crossed the 30s cap."
+  echo "ERROR: Nothing was proven -- check GATEWAY_PROOF_SECONDS."
+  exit 1
+fi
+echo "NOTE: Round trip took ${ELAPSED}s and returned: $(echo "${SLOW}" | jq -r '.result.stdout' | tr -d '
+')"
+echo "NOTE: An API Gateway integration would have returned 504 at 30s."
+
+api_post '{"runtime":"bash","action":"terminate"}' >/dev/null
+CONTROLLER_VM=""
 
 # ------------------------------------------------------------------------------
 # The controller refuses a request without the demo passphrase

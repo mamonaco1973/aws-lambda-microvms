@@ -36,6 +36,16 @@ import uuid
 # AWS posts lifecycle hooks to this fixed path prefix on the configured port.
 HOOK = "/aws/lambda-microvms/runtime/v1/"
 
+# Longest a single cell may run. This is the innermost of four nested timeouts
+# and so the one that decides what actually happens: it must stay BELOW the
+# controller's read timeout (870s), which is below the Lambda's ceiling (900s),
+# which is what the Function URL allows. Get the order wrong and a long cell
+# returns a gateway error instead of the "killed" message below.
+#
+# Fourteen minutes exists so a cell can run `dnf install` against the live VM.
+# It is still a usability guard, not a sandbox -- the VM is the boundary.
+CELL_TIMEOUT = 840
+
 
 class Lab:
     """Owns the persistent interpreter subprocess and this session's identity.
@@ -174,7 +184,7 @@ class Lab:
 
         Returns:
             The interpreter's result, or an explanatory failure. A cell that
-            overruns five seconds has its interpreter killed, which loses the
+            overruns CELL_TIMEOUT has its shell killed, which loses the
             session -- a usability guard for a live demo, emphatically not a
             security sandbox. The VM boundary is the security boundary.
 
@@ -194,12 +204,12 @@ class Lab:
             self.worker.stdin.write(json.dumps({"code": code}) + "\n")
             self.worker.stdin.flush()
             try:
-                result = self.responses.get(timeout=5)
+                result = self.responses.get(timeout=CELL_TIMEOUT)
             except queue.Empty:
                 self.worker.kill()
                 self.worker.wait(timeout=5)
                 self.dead = True
-                result = {"ok": False, "stdout": "Cell exceeded 5 seconds. Worker killed; state is lost. Launch a fresh session."}
+                result = {"ok": False, "stdout": f"Cell exceeded {CELL_TIMEOUT}s. Worker killed; state is lost. Launch a fresh session."}
             return result
         finally:
             self.lock.release()

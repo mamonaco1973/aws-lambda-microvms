@@ -1,21 +1,23 @@
-# AWS Lambda MicroVMs — Python, Node.js and Bash, Same Platform
+# AWS Lambda MicroVMs — A Persistent Shell That Survives Suspension
 
 This project demonstrates **AWS Lambda MicroVMs**, the serverless compute
 primitive AWS launched in June 2026 that runs isolated Firecracker VMs for up to
 eight hours and **preserves live process state across suspend and resume**.
 
-It runs **three MicroVMs from three images** — Python, Node.js and Bash. You
-create a variable, advance a generator and write a file, then suspend the VM.
-When it resumes, the interpreter is exactly where you left it: no replayed code,
-no reconstructed namespace, no deserialization.
+It runs **one MicroVM** holding a live bash shell. You set some variables and
+write a file, then suspend the VM. When it resumes, the shell is exactly where
+you left it: no replayed commands, no reconstructed environment, no
+deserialization.
 
-The three runtimes are configured identically. Every launch parameter,
-connector, policy and limit is the same; only the image differs. That is the
-point.
+Bash also proves the platform contract needs no SDK. The lifecycle hooks are
+plain HTTP on a port you declare, so a runtime AWS never shipped a client for
+works like any other.
 
-Bash earns its place by proving the platform contract needs no SDK. The
-lifecycle hooks are plain HTTP on a port you declare, so a runtime AWS never
-shipped a client for works exactly like the two it did.
+**The API is a Lambda Function URL, not an API Gateway.** That is deliberate and
+it is the second thing this project demonstrates: an API Gateway integration is
+capped at 30 seconds and cannot be raised, so a cell that installs a package
+inside the MicroVM is impossible behind one. A Function URL's ceiling is the
+function's own timeout, which makes a 15-minute synchronous request legal.
 
 ![webapp](webapp.png)
 
@@ -24,15 +26,16 @@ Key capabilities demonstrated:
 1. **Stateful Suspend and Resume** – Variables, data structures and open files
    survive an explicit suspend and an HTTPS-triggered resume, with nothing
    serialized, saved or replayed in between.
-2. **Runtime Independence** – The same platform configuration runs a Python
-   interpreter, a Node.js interpreter and a Bash shell, and `validate.sh`
-   asserts all three against byte-identical expected output.
+2. **Long Synchronous Requests** – A single request can occupy the controller
+   for minutes, so a cell can install software into the running VM.
+   `validate.sh` proves it by returning from a request that took longer than
+   an API Gateway would ever allow.
 3. **VM-Level Isolation** – Each session gets its own kernel, filesystem and
    endpoint from a shared image snapshot.
 4. **Snapshot-Safe Identity** – A session nonce is generated in the `/run`
    lifecycle hook, demonstrating why identity must not be baked into a snapshot.
 5. **Infrastructure as Code (IaC)** – Terraform provisions both MicroVM images,
-   API Gateway, Lambda, DynamoDB and S3 web hosting.
+   a Function URL, Lambda, DynamoDB and S3 web hosting.
 
 ![AWS Lambda MicroVMs Diagram](aws-lambda-microvms.png)
 
@@ -64,25 +67,25 @@ of AMIs.
 
 | Phase | Directory | What it creates |
 |-------|-----------|-----------------|
-| 1 | `01-microvms` | Private source bucket, build role, **three** MicroVM images |
-| 2 | `02-lambdas` | API Gateway, controller Lambda, DynamoDB, web bucket |
+| 1 | `01-microvms` | Private source bucket, build role, **one** MicroVM image |
+| 2 | `02-lambdas` | Function URL, controller Lambda, DynamoDB, web bucket |
 | 3 | `03-webapp` | Static SPA and the generated `config.json` |
 
-`01-microvms/python/`, `01-microvms/node/` and `01-microvms/bash/` each hold a
-Dockerfile and a server implementing the same HTTP contract. Adding a fourth
-runtime means adding one line to `01-microvms/locals.tf` and a directory —
-nothing else needs to know.
+`01-microvms/bash/` holds a Dockerfile and a server implementing the hook
+contract. Everything is still derived from a `runtimes` map, so adding a second
+runtime is one line in `01-microvms/locals.tf` plus a directory — but each image
+carries a one-week minimum storage charge, so the default builds only what the
+demo uses.
 
-The bash image runs a Python HTTP supervisor, because bash has no usable HTTP
-server; the **session runtime** — the process holding state across a checkpoint
-— is bash. Its `server.py` is a deliberate copy of the Python one, differing
-only in which worker it launches, since each runtime directory is zipped
-independently and cannot import from a sibling.
+The image runs a Python HTTP supervisor, because bash has no usable HTTP server.
+The **session runtime** — the process holding state across a checkpoint — is
+bash.
 
 ## API Endpoints
 
-Three routes on an **API Gateway HTTP API**. Every request must carry the demo
-passphrase in an `X-Demo-Passphrase` header.
+Three routes on a **Lambda Function URL**. Every request must carry the demo
+passphrase in an `X-Demo-Passphrase` header — the URL's auth type is `NONE`, so
+the controller is the only thing authenticating anything.
 
 ### GET /api/config
 
@@ -100,12 +103,12 @@ destroy the behavior the demo exists to show.
 Runs one lifecycle operation synchronously.
 
 ```json
-{ "runtime": "node", "action": "execute", "code": "balance += 1;" }
+{ "runtime": "bash", "action": "execute", "code": "visits=$((visits + 1))" }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `runtime` | string | Yes | `python`, `node` or `bash`. |
+| `runtime` | string | Yes | `bash`. |
 | `action` | string | Yes | `launch`, `suspend`, `wake`, `execute`, `terminate`. |
 | `code` | string | No | Source for `execute`. Max 16 KB. |
 
@@ -115,8 +118,8 @@ Runs one lifecycle operation synchronously.
 ./apply.sh
 ```
 
-Resolves the newest managed base image version, packages all three runtime zips
-plus the controller, applies each phase, and finishes by running `validate.sh` —
+Resolves the newest managed base image version, packages the runtime zip plus
+the controller, applies each phase, and finishes by running `validate.sh` —
 which prints the application URL **and the demo passphrase**.
 
 ## Sign In
@@ -138,9 +141,11 @@ world-readable from the S3 bucket, so anything shipped in it would be public.
 
 > **This is a demo, not a product.** There is no Cognito, no user pool and no
 > per-user isolation, because five moving parts of authentication taught nothing
-> about MicroVMs. The passphrase plus API Gateway throttling is all that stands
-> between a stranger and an endpoint that executes code and launches billable
-> VMs. Run `./destroy.sh` when you are finished.
+> about MicroVMs. A Function URL has **no throttling at all**, so the passphrase
+> plus the controller's reserved concurrency of 3 is all that stands between a
+> stranger and an endpoint that executes code and launches billable VMs. That is
+> a worse position than the API Gateway stage limits it replaced, accepted
+> knowingly to escape the 30-second cap. Run `./destroy.sh` when you finish.
 
 In the browser, pick a tab and **Launch**. Then run the same cell,
 **Check state**, at four points — it never changes, and the answer does:
@@ -164,9 +169,10 @@ Do it in the other tabs and watch the identical output in a different language.
 ./validate.sh
 ```
 
-For **each** runtime: launches a MicroVM, seeds interpreter state, suspends it,
-resumes it with an ordinary HTTPS request, and asserts the output is exactly
-`42 1 validated` — the same string for all three languages. It also confirms the
+Launches a MicroVM, seeds live shell state, suspends it, resumes it with an
+ordinary HTTPS request, and asserts the output is exactly `42 1 validated`.
+It then drives a **40-second request through the controller** and fails if it
+returns in under 30 seconds, since that would prove nothing. It also confirms the
 MicroVM endpoint rejects unauthenticated requests with 403 and the controller
 rejects a missing passphrase with 401. Sessions are terminated on exit,
 including on failure.
@@ -194,7 +200,7 @@ reverse order. Keep the local Terraform state until it succeeds.
 
 Each MicroVM uses the **0.5 GB / 0.25 vCPU baseline** (bursting to 2 GB / 1 vCPU),
 auto-suspends after 30 minutes idle, terminates after 30 minutes suspended, and
-has a 1-hour maximum lifetime. One session per runtime, so at most three VMs.
+has a 1-hour maximum lifetime. One session per runtime, so at most one VM.
 
 At ARM rates that baseline costs **$0.0315/hour** while RUNNING
 (0.25 vCPU x $0.0000276944 + 0.5 GB x $0.0000036667 per second) and **nothing**
@@ -214,6 +220,7 @@ read on every refresh.
 Images are billed separately from MicroVMs at **$0.08/GB-month with a one-week
 minimum**, whether or not anything is running. Image names are content-hashed,
 so every source change mints a new image that bills for at least a week —
+which is the main reason this builds one image rather than three —
 `destroy.sh` deletes them but cannot undo the minimum. Log groups use one-day
 retention. See [Lambda pricing](https://aws.amazon.com/lambda/pricing/).
 

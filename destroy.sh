@@ -53,18 +53,6 @@ fi
 # directory therefore breaks teardown outright. Only existence matters here, so
 # rebuild cheaply and skip the pip download the real controller package needs.
 # ------------------------------------------------------------------------------
-if [[ ! -f dist/python-app.zip ]]; then
-  echo "NOTE: Rebuilding dist/python-app.zip so the configuration can be evaluated..."
-  mkdir -p dist
-  (cd 01-microvms/python && zip -q -X -r ../../dist/python-app.zip Dockerfile server.py worker.py)
-fi
-
-if [[ ! -f dist/node-app.zip ]]; then
-  echo "NOTE: Rebuilding dist/node-app.zip so the configuration can be evaluated..."
-  mkdir -p dist
-  (cd 01-microvms/node && zip -q -X -r ../../dist/node-app.zip Dockerfile server.js worker.js)
-fi
-
 if [[ ! -f dist/bash-app.zip ]]; then
   echo "NOTE: Rebuilding dist/bash-app.zip so the configuration can be evaluated..."
   mkdir -p dist
@@ -120,7 +108,7 @@ if [[ -f 02-lambdas/terraform.tfstate && ! -f 02-lambdas/deployment.tfvars.json 
   # enough: destroy deletes what state records, not what configuration says.
   images=$(terraform -chdir=01-microvms output -json images 2>/dev/null || true)
   if [[ -z "${images}" || "${images}" == "null" ]]; then
-    images='{"python":{"image_arn":"unused-for-destroy","image_version":"1","image_name":"unused-for-destroy"}}'
+    images='{"bash":{"image_arn":"unused-for-destroy","image_version":"1","image_name":"unused-for-destroy"}}'
   fi
 
   jq -n --arg region "${AWS_DEFAULT_REGION}" \
