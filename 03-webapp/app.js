@@ -343,9 +343,12 @@ Press Launch to start one, then run this cell again.`;
     // An execute returns a job id, not an answer -- the cell is still running
     // inside the MicroVM. Poll for it rather than holding a request open, so
     // a cell may run far longer than any HTTP timeout in the chain allows.
+    //
+    // A response with no job id was never started (the shell is busy, or it
+    // is dead) and already reads like a finished result, so it falls through
+    // to render() untouched.
     if (operation === 'execute' && data.result && data.result.job) {
       clearInterval(ticker);       // poll() owns the clock from here
-      if (data.result.note) log(`${RUNTIME_LABELS[runtime] ?? runtime} - ${data.result.note}`, true);
       data.result = await poll(runtime, data.result.job, started, output);
     }
     render(runtime, data, ['launch', 'execute', 'wake'].includes(operation));

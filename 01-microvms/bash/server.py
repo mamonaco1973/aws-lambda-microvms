@@ -199,12 +199,19 @@ class Lab:
             raise ValueError("Code must be a string of at most 12000 characters")
 
         with self.lock:
-            # One shell, so one cell at a time. Reported rather than queued:
-            # a caller waiting behind a cell that may never finish has no way
-            # to tell that from its own cell being slow.
+            # One shell, so one cell at a time. Refused rather than queued: a
+            # caller waiting behind a cell that may never finish cannot tell
+            # that from its own cell being slow.
+            #
+            # Deliberately NOT the running job's id. Handing that back would
+            # have the caller poll a cell it did not submit and render another
+            # cell's output as its own answer.
             if self.job and self.job["state"] == "running":
-                return {"job": self.job["id"], "state": "running",
-                        "note": "Another cell is still running."}
+                elapsed = round(time.time() - self.job["started"])
+                return {"ok": False,
+                        "stdout": f"Another cell has been running for {elapsed}s. "
+                                  "One shell means one cell at a time; wait for it "
+                                  "or terminate the session."}
             if self.dead or self.worker.poll() is not None:
                 return self._finished_job(
                     {"ok": False,
