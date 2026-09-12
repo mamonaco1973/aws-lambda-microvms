@@ -74,6 +74,12 @@ header p { font-size: 22px; color: var(--muted); max-width: 1100px; margin: 0 0 
   border: 2px solid var(--line); border-top: none; border-radius: 0 0 12px 12px;
   padding: 28px; background: var(--panel);
 }
+
+/* With a single runtime the tab row is hidden, so the panel has nothing to
+   tuck under: give it back the top edge the tabs were standing in for. */
+#tabs[hidden] + #panels .panel {
+  border-top: 2px solid var(--line); border-radius: 12px; margin-top: 28px;
+}
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 
 /* The badge is the only on-screen proof that a suspend happened, so it is sized
@@ -109,8 +115,10 @@ button:disabled { opacity: .4; cursor: default; }
 .stat strong { display: block; font: 700 34px var(--mono); color: var(--amber); padding-top: 8px; }
 
 /* --------------------------------------------------------------------------
-   Editor and output — the output pane is what the demo reads aloud, so it is
-   the largest text on the page.
+   Editor and output — one size for both. They sit side by side at equal
+   height, so differing sizes read as a mistake; and with a free-form cell in
+   the dropdown the input gets typed into live, which makes it as much the
+   subject of a shot as the output is.
    -------------------------------------------------------------------------- */
 /* Side by side on a wide screen. Stacked, the output pane falls below 1080 in
    a screen capture and the one thing the demo reads out loud is off frame. */
@@ -120,14 +128,14 @@ button:disabled { opacity: .4; cursor: default; }
 
 textarea {
   width: 100%; height: 320px; padding: 18px;
-  font: 22px/1.6 var(--mono); resize: vertical;
+  font: 26px/1.6 var(--mono); resize: vertical;
   border: 2px solid var(--line); border-radius: 10px;
   background: var(--bg); color: var(--ink);
 }
 
 pre {
   white-space: pre-wrap; overflow-wrap: anywhere;
-  font: 30px/1.6 var(--mono);
+  font: 26px/1.6 var(--mono);
   background: var(--bg); color: var(--amber);
   border: 2px solid var(--line); border-radius: 10px;
   padding: 22px; margin: 0;
@@ -197,8 +205,8 @@ footer { font-size: 17px; line-height: 1.8; color: var(--muted); margin: 28px 0;
   .editor-tools { flex-direction: column; }
   .editor-tools select { max-width: none; }
   .editor { grid-template-columns: 1fr; gap: 14px; }
-  textarea { height: 180px; font-size: 18px; }
-  pre { font-size: 21px; padding: 16px; height: auto; min-height: 150px; }
+  textarea { height: 180px; font-size: 20px; }
+  pre { font-size: 20px; padding: 16px; height: auto; min-height: 150px; }
   .config { padding: 14px 16px; }
   .status { font-size: 18px; padding: 8px 13px; }
 }

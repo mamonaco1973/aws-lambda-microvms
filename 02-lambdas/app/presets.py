@@ -26,6 +26,7 @@ echo "visits = ${visits}"
 echo "items  = ${items[*]}"
 echo "file   = $(cat note.txt 2>/dev/null || echo '(none)')"
 echo "git    = $(command -v git >/dev/null && git --version || echo '(not installed)')"
+echo "aws    = $(command -v aws >/dev/null && aws --version 2>&1 | cut -d' ' -f1 || echo '(not installed)')"
 """,
 
         "update": """user=mike
@@ -69,7 +70,14 @@ dnf install -y unzip
 # A subshell, because the working directory is session state like any other:
 # `cd /tmp` out here would break Check state, which reads note.txt relative
 # to wherever the shell happens to be.
+#
+# set -e is safe ONLY in here. In the session shell it would both leak into
+# every later cell and kill the session on the first error, taking the state
+# this demo exists to show. Nothing below creates state worth keeping, so
+# failing fast is free -- and without it a failed download cascades into a
+# failed unzip and a failed install, burying the one error that mattered.
 (
+  set -e
   cd /tmp
   curl -fsSL -o awscliv2.zip     https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
   unzip -q -o awscliv2.zip

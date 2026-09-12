@@ -92,6 +92,15 @@ async function api(path, options = {}) {
 // -----------------------------------------------------------------------------
 function buildTabs() {
   const tabs = document.querySelector('#tabs');
+
+  // A row of one tab is chrome that selects nothing. Hidden rather than
+  // deleted, because the runtimes map in 01-microvms is still a map: add a
+  // second runtime and the tabs come back with no change here.
+  if (config.runtimes.length < 2) {
+    tabs.hidden = true;
+    return;
+  }
+
   for (const runtime of config.runtimes) {
     const button = document.createElement('button');
     button.className = 'tab';
