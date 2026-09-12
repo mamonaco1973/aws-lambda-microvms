@@ -138,12 +138,14 @@ function buildPanel(runtime) {
     </div>
     <details class="config" open>
       <summary>Configuration &mdash; and what it maps to on EC2</summary>
-      <table class="comparison">
-        <thead>
-          <tr><th>Concept</th><th>This MicroVM</th><th>EC2 equivalent</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="scroll">
+        <table class="comparison">
+          <thead>
+            <tr><th>Concept</th><th>This MicroVM</th><th>EC2 equivalent</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
       <p class="legend">
         Rows marked <span class="none">no equivalent</span> are capabilities EC2
         has no counterpart for.

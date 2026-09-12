@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="dark">
   <title>AWS Lambda MicroVMs</title>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -15,12 +16,8 @@
       Identical platform configuration, different runtime.
     </p>
     <p>
-      Run <strong>Check state</strong> on a freshly launched MicroVM and the
-      values are already set: they were assigned during the image build and
-      live in the snapshot. <strong>Update state</strong> changes them, and they
-      survive a suspend and resume because it is the same process &mdash;
-      nothing is saved, and nothing is reloaded. Terminate, launch again, and
-      the build-time values are back while yours are gone.
+      <strong>Check state</strong> reads the session. <strong>Update state</strong>
+      changes it. Suspend, wake, and check again &mdash; it is the same process.
     </p>
   </header>
 

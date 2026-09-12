@@ -1,83 +1,204 @@
-/* Simple demo client, matching the other AWS examples in this workspace. */
+/* ==========================================================================
+   Dark, oversized UI. Sized for a 1920x1080 screen capture that will be watched
+   on a phone, which is a much harsher constraint than a desktop browser: type
+   that is comfortable at arm's length is illegible once the frame is 5 inches
+   wide. Nothing here is smaller than 16px, and the two things the demo actually
+   reads out loud -- the output pane and the stat values -- are far larger.
+
+   The palette matches the video's slides so a cut between a slide and the app
+   does not jar.
+   ========================================================================== */
+
+:root {
+  --bg: #0b1422;
+  --panel: #16283b;
+  --raised: #1d3149;
+  --line: #2e455f;
+  --ink: #f3f6fb;
+  --muted: #9fb3c8;
+  --blue: #64b5ff;
+  --amber: #ffca70;
+  --green: #8cf0bd;
+  --red: #ff6f78;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
 body {
-  font-family: Arial, sans-serif;
-  max-width: 1100px;
-  margin: 24px auto;
-  padding: 0 20px;
-  color: #222;
-  background: white;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 20px;
+  line-height: 1.55;
+  max-width: 1640px;            /* fills a 1920 capture, not edge to edge */
+  margin: 28px auto;
+  padding: 0 32px;
+  color: var(--ink);
+  background: var(--bg);
 }
-h1 { font-size: 26px; margin-bottom: 8px; }
-h2 { font-size: 20px; }
-header p, footer { color: #555; }
-header p { line-height: 1.6; max-width: 780px; }
 
-/* Passphrase gate. Shown until the controller accepts the phrase; the phrase
-   is never shipped in config.json, so this is the only way in. */
-#gate { border: 1px solid #ccc; border-radius: 4px; padding: 18px; max-width: 480px; margin: 24px 0; }
-#gate h2 { margin: 0 0 6px; font-size: 17px; }
-#gate p { font-size: 13px; color: #555; margin: 0 0 12px; }
-#gate-form { display: flex; gap: 8px; }
-#gate input { flex: 1; padding: 8px 10px; font: 13px monospace; border: 1px solid #bbb; border-radius: 3px; }
-.error { color: #b42318; }
-#gate-error { margin-top: 10px; font-size: 13px; }
+h1 { font-size: 52px; font-weight: 700; margin: 0 0 10px; letter-spacing: -.01em; }
+h2 { font-size: 34px; font-weight: 700; margin: 0; }
+header p { font-size: 22px; color: var(--muted); max-width: 1100px; margin: 0 0 14px; }
+.error { color: var(--red); }
 
-/* Runtime tabs */
-.tabs { display: flex; gap: 4px; border-bottom: 2px solid #ccc; margin: 20px 0 0; }
+/* --------------------------------------------------------------------------
+   Passphrase gate — the only way in; the phrase is never in config.json
+   -------------------------------------------------------------------------- */
+#gate {
+  border: 2px solid var(--line); border-radius: 12px; background: var(--panel);
+  padding: 28px; max-width: 720px; margin: 32px 0;
+}
+#gate h2 { margin: 0 0 8px; }
+#gate p { font-size: 19px; color: var(--muted); margin: 0 0 18px; }
+#gate-form { display: flex; gap: 14px; }
+#gate input {
+  flex: 1; padding: 16px 18px; font: 24px var(--mono);
+  border: 2px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink);
+}
+#gate input::placeholder { color: #63788f; }
+#gate-error { margin-top: 16px; font-size: 19px; }
+
+/* --------------------------------------------------------------------------
+   Runtime tabs
+   -------------------------------------------------------------------------- */
+.tabs { display: flex; gap: 8px; border-bottom: 3px solid var(--line); margin: 28px 0 0; }
 .tab {
-  padding: 10px 22px; font-size: 14px; font-weight: bold; cursor: pointer;
-  border: 1px solid #ccc; border-bottom: none; border-radius: 4px 4px 0 0;
-  background: #f0f0f0; color: #555; position: relative; top: 2px;
+  padding: 16px 38px; font-size: 24px; font-weight: 700; cursor: pointer;
+  border: 2px solid var(--line); border-bottom: none; border-radius: 10px 10px 0 0;
+  background: var(--panel); color: var(--muted); position: relative; top: 3px;
 }
-.tab.active { background: white; color: #1d4ed8; border-bottom: 2px solid white; }
+.tab.active { background: var(--raised); color: var(--blue); border-bottom: 3px solid var(--raised); }
 
-.panel { border: 1px solid #ccc; border-top: none; border-radius: 0 0 4px 4px; padding: 18px; }
-.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.panel-head h2 { margin: 0 0 12px; }
-.status { background: #eee; padding: 5px 8px; font-size: 12px; font-weight: bold; border-radius: 3px; }
-.status.RUNNING { background: #e2f4e7; color: #16632f; }
-.status.SUSPENDED { background: #fff0cd; color: #875900; }
-.status.TERMINATED { background: #eee; color: #666; }
+.panel {
+  border: 2px solid var(--line); border-top: none; border-radius: 0 0 12px 12px;
+  padding: 28px; background: var(--panel);
+}
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 
-.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
-button, select { padding: 7px 10px; font-size: 12px; border: 1px solid #bbb; border-radius: 3px; cursor: pointer; background: #f4f4f4; color: #222; }
-button.primary { background: #2563eb; color: white; border-color: #2563eb; }
-button:hover { filter: brightness(.95); }
-button:disabled { opacity: .45; cursor: default; }
+/* The badge is the only on-screen proof that a suspend happened, so it is sized
+   to stay legible even in a wide establishing shot. */
+.status {
+  font-size: 22px; font-weight: 700; letter-spacing: .06em;
+  padding: 10px 18px; border-radius: 8px;
+  background: var(--raised); color: var(--muted);
+}
+.status.RUNNING    { background: #17402a; color: var(--green); }
+.status.SUSPENDED  { background: #46330d; color: var(--amber); }
+.status.TERMINATED { background: #2a2f36; color: #9aa4b0; }
 
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
-.stat { padding: 10px; background: #f5f5f5; border: 1px solid #ddd; }
-.stat small { display: block; font-size: 10px; color: #555; }
-.stat strong { display: block; font: 17px monospace; padding-top: 5px; }
+/* --------------------------------------------------------------------------
+   Controls
+   -------------------------------------------------------------------------- */
+.buttons { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+button, select {
+  padding: 14px 22px; font-size: 20px; font-weight: 600; cursor: pointer;
+  border: 2px solid var(--line); border-radius: 8px;
+  background: var(--raised); color: var(--ink);
+}
+button.primary { background: var(--blue); color: #06192b; border-color: var(--blue); }
+button:hover:not(:disabled) { filter: brightness(1.15); }
+button:disabled { opacity: .4; cursor: default; }
 
-.editor-tools { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-textarea { width: 100%; height: 150px; box-sizing: border-box; font: 12px/1.5 monospace; padding: 10px; resize: vertical; border: 1px solid #bbb; background: #fafafa; color: #222; }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 monospace; background: #f5f5f5; border: 1px solid #ddd; padding: 10px; min-height: 70px; max-height: 240px; overflow: auto; }
+/* --------------------------------------------------------------------------
+   Stats
+   -------------------------------------------------------------------------- */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+.stat { padding: 18px 20px; background: var(--raised); border: 2px solid var(--line); border-radius: 10px; }
+.stat small { display: block; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.stat strong { display: block; font: 700 34px var(--mono); color: var(--amber); padding-top: 8px; }
 
-/* Configuration table: the EC2 comparison. Rows AWS has no EC2 counterpart for
-   are tinted, because those are the point of the whole demo. */
-.config { margin: 18px 0 8px; border: 1px solid #ddd; border-radius: 4px; padding: 12px 14px; background: #fafafa; }
-.config summary { font-size: 14px; font-weight: bold; cursor: pointer; }
-.comparison { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
-.comparison th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #ccc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #555; }
-.comparison td { padding: 6px 8px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
-.comparison td:first-child { width: 20%; font-weight: bold; }
-.comparison td.mono { font-family: monospace; overflow-wrap: anywhere; width: 42%; }
-.comparison tr.unmapped { background: #fff6e5; }
-.comparison td.none { color: #875900; font-style: italic; }
-.legend { font-size: 11px; color: #666; margin: 10px 0 0; }
-.legend .none { color: #875900; font-style: italic; }
+/* --------------------------------------------------------------------------
+   Editor and output — the output pane is what the demo reads aloud, so it is
+   the largest text on the page.
+   -------------------------------------------------------------------------- */
+/* Side by side on a wide screen. Stacked, the output pane falls below 1080 in
+   a screen capture and the one thing the demo reads out loud is off frame. */
+.editor { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.editor-tools { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 16px; margin-bottom: 0; }
+.editor-tools select { flex: 1; max-width: 520px; }
 
-.details { font: 11px/1.8 monospace; overflow-wrap: anywhere; min-height: 110px; margin-top: 10px; }
+textarea {
+  width: 100%; height: 320px; padding: 18px;
+  font: 22px/1.6 var(--mono); resize: vertical;
+  border: 2px solid var(--line); border-radius: 10px;
+  background: var(--bg); color: var(--ink);
+}
 
-.evidence { margin-top: 20px; border-top: 1px solid #ccc; }
-.evidence p { font-size: 13px; color: #555; }
-#timeline { height: 130px; overflow: auto; border: 1px solid #ddd; background: #fafafa; padding: 10px; }
-#timeline p { font: 12px/1.5 monospace; margin: 0 0 5px; color: #222; }
-#timeline .error { color: #b42318; }
-footer { font-size: 11px; line-height: 1.8; margin: 18px 0; }
+pre {
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 30px/1.6 var(--mono);
+  background: var(--bg); color: var(--amber);
+  border: 2px solid var(--line); border-radius: 10px;
+  padding: 22px; margin: 0;
+  height: 320px; overflow: auto;
+}
 
-@media (max-width: 800px) {
-  .stats { grid-template-columns: repeat(2, 1fr); }
-  .comparison td:first-child { width: auto; }
+/* --------------------------------------------------------------------------
+   Configuration table — the EC2 comparison. Rows with no EC2 counterpart are
+   tinted, because those rows are the point of the whole demo.
+   -------------------------------------------------------------------------- */
+.config {
+  margin: 28px 0 10px; border: 2px solid var(--line); border-radius: 12px;
+  padding: 20px 24px; background: var(--raised);
+}
+.config summary { font-size: 24px; font-weight: 700; cursor: pointer; color: var(--ink); }
+
+/* Three columns of large type overflow a narrow viewport; scroll the table
+   rather than the page, so the layout never breaks sideways. */
+.config .scroll { overflow-x: auto; }
+.comparison { width: 100%; min-width: 900px; border-collapse: collapse; margin-top: 18px; font-size: 19px; }
+.comparison th {
+  text-align: left; padding: 12px 14px; border-bottom: 3px solid var(--line);
+  font-size: 16px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.comparison td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.comparison td:first-child { width: 22%; font-weight: 700; }
+.comparison td.mono { font-family: var(--mono); overflow-wrap: anywhere; width: 40%; color: var(--blue); }
+.comparison tr.unmapped { background: #3a2c10; }
+.comparison td.none { color: var(--amber); font-style: italic; }
+.legend { font-size: 17px; color: var(--muted); margin: 14px 0 0; }
+.legend .none { color: var(--amber); font-style: italic; }
+
+.details { font: 18px/1.9 var(--mono); color: var(--muted); overflow-wrap: anywhere; margin-top: 18px; }
+
+/* --------------------------------------------------------------------------
+   Lifecycle log
+   -------------------------------------------------------------------------- */
+.evidence { margin-top: 34px; border-top: 2px solid var(--line); padding-top: 22px; }
+.evidence p { font-size: 19px; color: var(--muted); }
+#timeline {
+  height: 210px; overflow: auto; padding: 18px;
+  border: 2px solid var(--line); border-radius: 10px; background: var(--panel);
+}
+#timeline p { font: 19px/1.6 var(--mono); margin: 0 0 8px; color: var(--ink); }
+#timeline .error { color: var(--red); }
+
+footer { font-size: 17px; line-height: 1.8; color: var(--muted); margin: 28px 0; }
+
+/* --------------------------------------------------------------------------
+   Real phones. The capture target is a 1920 frame, but the app should still
+   be usable on a handset: type stays large, only the layout collapses.
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  body { font-size: 18px; padding: 0 18px; margin: 18px auto; }
+  h1 { font-size: 34px; }
+  h2 { font-size: 26px; }
+  header p { font-size: 19px; }
+  /* Three tabs at readable size exceed a narrow handset; scroll the row
+     rather than shrink the labels below the legibility floor. */
+  .tabs { gap: 5px; overflow-x: auto; scrollbar-width: none; }
+  .tab { padding: 13px 18px; font-size: 19px; flex: 0 0 auto; }
+  .panel { padding: 18px; }
+  .stats { grid-template-columns: 1fr; }
+  .stat strong { font-size: 28px; }
+  .buttons { gap: 9px; }
+  button, select { padding: 13px 16px; font-size: 18px; }
+  .editor-tools { flex-direction: column; }
+  .editor-tools select { max-width: none; }
+  .editor { grid-template-columns: 1fr; gap: 14px; }
+  textarea { height: 180px; font-size: 18px; }
+  pre { font-size: 21px; padding: 16px; height: auto; min-height: 150px; }
+  .config { padding: 14px 16px; }
+  .status { font-size: 18px; padding: 8px 13px; }
 }
