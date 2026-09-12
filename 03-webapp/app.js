@@ -311,7 +311,7 @@ function render(runtime, data, sampled = false) {
 }
 
 // -----------------------------------------------------------------------------
-// Actions complete synchronously; MicroVM endpoint tokens never leave AWS.
+// Lifecycle actions are synchronous; cells are submitted and polled. Endpoint tokens stay in AWS.
 // -----------------------------------------------------------------------------
 function isLive(runtime) {
   const state = states[runtime]?.state;

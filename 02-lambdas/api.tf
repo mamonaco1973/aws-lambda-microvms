@@ -1,11 +1,9 @@
 # ==============================================================================
-# HTTP API — the only public entry point to the MicroVM control plane
+# HTTP API â€” the only public entry point to the MicroVM control plane
 # ==============================================================================
-# No authorizer, deliberately. Authentication happens inside the Lambda for a
-# reason the gateway cannot express: the /oauth/* routes ARE the authentication
-# and must stay public, while /api/* and /mcp need the caller's identity rather
-# than a yes/no -- the email is the session key, so a gateway authorizer would
-# have to hand it down anyway.
+# The Lambda resolves Cognito access tokens for both API and MCP requests.
+# OAuth discovery and login routes remain public. This is an implementation
+# choice; gateway authorizers can also pass identity claims to integrations.
 
 resource "aws_apigatewayv2_api" "this" {
   name          = var.name
@@ -31,8 +29,8 @@ resource "aws_apigatewayv2_integration" "this" {
   # The service caps this at 30s, and that cap costs nothing now: no request
   # waits for a cell. Cells are submitted and polled, so the work runs in the
   # MicroVM for as long as it needs while every request here stays short.
-  # The controller's own timeout sits below this so a slow lifecycle call
-  # returns a JSON error rather than a gateway 504.
+  # The controller timeout is 30s, above this 29s integration timeout.
+  # A slow lifecycle call can therefore still produce a gateway 504.
   timeout_milliseconds = 29000
 }
 
@@ -57,10 +55,8 @@ resource "aws_apigatewayv2_stage" "this" {
   name        = "$default"
   auto_deploy = true
 
-  # Throttled hard on purpose. Each accepted request can run a MicroVM, so with
-  # no authorizer in front this is the main bound on what a stranger who finds
-  # the URL can cost you. Raised from the original 5/s because the browser now
-  # polls once a second per running cell; the burst still absorbs a page load.
+  # Throttle request traffic, including result polling. Authentication is
+  # enforced by Lambda. This is not a cap on live VMs or aggregate spending.
   default_route_settings {
     throttling_burst_limit = 10
     throttling_rate_limit  = 10

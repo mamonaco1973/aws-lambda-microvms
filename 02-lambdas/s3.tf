@@ -4,9 +4,8 @@
 # No CloudFront and no custom domain: the bucket's own regional REST endpoint
 # already serves HTTPS, which is all the SPA and the API's CORS rule require.
 #
-# Public read covers static assets only, and they carry no secrets: config.json
-# holds the API URL and nothing else. The demo passphrase is never written here,
-# which is the whole reason it is typed rather than shipped.
+# Public assets contain no credentials. config.json supplies the API URL,
+# Cognito domain and public SPA client ID.
 
 resource "aws_s3_bucket" "web" {
   bucket = "${var.name}-web-${data.aws_caller_identity.current.account_id}"

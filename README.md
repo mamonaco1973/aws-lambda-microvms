@@ -1,24 +1,24 @@
-# AWS Lambda MicroVMs — A Persistent Shell That Survives Suspension
+# AWS Lambda MicroVMs - A Shared Sandbox for Browser and Claude
 
 This project demonstrates **AWS Lambda MicroVMs**, the serverless compute
 primitive AWS launched in June 2026 that runs isolated Firecracker VMs for up to
 eight hours and **preserves live process state across suspend and resume**.
 
-It runs **one MicroVM** holding a live bash shell. You set some variables and
+It runs **one MicroVM per user** holding a live Bash shell. The browser and Claude MCP connector use the same Cognito identity to reach the same sandbox. You set some variables and
 write a file, then suspend the VM. When it resumes, the shell is exactly where
 you left it: no replayed commands, no reconstructed environment, no
 deserialization.
 
 Bash also proves the platform contract needs no SDK. The lifecycle hooks are
-plain HTTP on a port you declare, so a runtime AWS never shipped a client for
-works like any other.
+plain HTTP on a port you declare. Bash uses the Python supervisor to implement
+that contract without a language-specific MicroVM client.
 
 **Cells are submitted, not awaited.** That is the second thing this project
 demonstrates. `POST /execute` hands a cell to the shell and returns a job id in
 milliseconds; the browser polls for the answer. Because the MicroVM already
 holds the session's state, it can just as easily hold the job and its result —
-so no HTTP request is ever long, and a cell can run far past the 30-second cap
-every API Gateway has. The ceiling on a cell is the MicroVM's own lifetime.
+so cell execution does not hold a request open and can outlast the deployed
+HTTP API integration timeout. Lifecycle requests can still time out. The ceiling on a cell is the MicroVM's own lifetime.
 
 ![webapp](webapp.png)
 
@@ -27,18 +27,27 @@ Key capabilities demonstrated:
 1. **Stateful Suspend and Resume** – Variables, data structures and open files
    survive an explicit suspend and an HTTPS-triggered resume, with nothing
    serialized, saved or replayed in between.
-2. **Long Synchronous Requests** – A single request can occupy the controller
-   for minutes, so a cell can install software into the running VM. The
-   *Install AWS CLI* preset is the demonstration: it installs a real AWS
-   client and calls AWS as the MicroVM's own IAM role.
+2. **Long-running cells** - Submit a cell, receive a job ID, and poll for its
+   result. Work and results live inside the MicroVM, beyond individual HTTP
+   request timeouts. Install Git or the AWS CLI and keep them across suspension.
 3. **VM-Level Isolation** – Each session gets its own kernel, filesystem and
    endpoint from a shared image snapshot.
 4. **Snapshot-Safe Identity** – A session nonce is generated in the `/run`
    lifecycle hook, demonstrating why identity must not be baked into a snapshot.
-5. **Infrastructure as Code (IaC)** – Terraform provisions both MicroVM images,
+5. **Infrastructure as Code (IaC)** – Terraform provisions the Bash image, Cognito,
    API Gateway, Lambda, DynamoDB and S3 web hosting.
 
-![AWS Lambda MicroVMs Diagram](aws-lambda-microvms.png)
+```mermaid
+flowchart LR
+    Browser[Browser SPA] --> API[API Gateway HTTP API]
+    Claude[Claude MCP connector] --> API
+    Cognito[Cognito identity] --> Browser
+    Cognito --> Claude
+    API --> Controller[Controller Lambda + OAuth proxy]
+    Controller --> Metadata[DynamoDB: session IDs and OAuth exchanges]
+    Controller -->|Lifecycle APIs and authenticated HTTPS| VM[MicroVM: supervisor + persistent Bash]
+    VM -->|Guest IAM role: read only| S3[Demo web bucket]
+```
 
 ## MicroVM Concepts, in EC2 Terms
 
@@ -55,7 +64,7 @@ Several rows have **no EC2 equivalent at all**:
 | Boot payload | `runHookPayload` (16 KB) | User data (16 KB) |
 | Init | `/run` lifecycle hook | cloud-init |
 | Inbound | Network connectors | Security group rules |
-| Credentials | Execution role (none here) | IAM instance profile |
+| Credentials | Guest execution role: read access to the demo web bucket | IAM instance profile |
 | Access | Per-VM HTTPS endpoint + scoped token | Public IP + SSH keypair |
 | Idle behaviour | Auto-suspend, auto-resume on traffic | *no equivalent* |
 | Lifetime | Hard ceiling, 8 hours maximum | *no equivalent — instances run forever* |
@@ -74,7 +83,7 @@ of AMIs.
 
 `01-microvms/bash/` holds a Dockerfile and a server implementing the hook
 contract. Everything is still derived from a `runtimes` map, so adding a second
-runtime is one line in `01-microvms/locals.tf` plus a directory — but each image
+runtime requires the map entry, source directory, packaging, presets and validation cells — but each image
 carries a one-week minimum storage charge, so the default builds only what the
 demo uses.
 
@@ -88,7 +97,7 @@ Routes on a single **API Gateway HTTP API**, serving both front doors: `/api/*`
 for the SPA, `POST /mcp` for the Claude connector, and `/oauth/*` for the
 authorization-server proxy. There is no gateway authorizer — the Lambda resolves
 the Cognito access token itself, because the caller's **email is the session
-key** and a yes/no answer would not be enough.
+key** and this implementation resolves the token through Cognito userInfo to obtain the email. Gateway authorizers are not inherently limited to a yes/no result.
 
 ### GET /api/config
 
@@ -103,7 +112,7 @@ destroy the behavior the demo exists to show.
 
 ### POST /api/action
 
-Runs one lifecycle operation synchronously.
+Lifecycle operations run synchronously. `execute` submits a cell and returns `result.job`; poll with `action: "result"` and that `job` ID. The current/latest job and result live in supervisor memory, not a durable queue. Only one cell runs at a time; additional submissions are refused.
 
 ```json
 { "runtime": "bash", "action": "execute", "code": "visits=$((visits + 1))" }
@@ -112,8 +121,9 @@ Runs one lifecycle operation synchronously.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runtime` | string | Yes | `bash`. |
-| `action` | string | Yes | `launch`, `suspend`, `wake`, `execute`, `terminate`. |
-| `code` | string | No | Source for `execute`. Max 16 KB. |
+| `action` | string | Yes | `launch`, `suspend`, `wake`, `execute`, `result`, `reset`, `terminate`. |
+| `code` | string | No | Source for `execute`: controller maximum 16,000 bytes; guest maximum 12,000 characters. Both apply. |
+| `job` | string | For `result` | Job ID returned by `execute`. |
 
 ## Deploy the Build
 
@@ -156,7 +166,7 @@ sign in, and then calls the tools: `launch_session`, `run_cell`, `get_result`,
 > makes widening that role defensible — it does not make it automatic. Run
 > `./destroy.sh` when you finish.
 
-In the browser, pick a tab and **Launch**. Then run the same cell,
+In the browser, click **Launch**. With one runtime, the tab selector is hidden. Then run the same cell,
 **Check state**, at four points — it never changes, and the answer does:
 
 | Step | Output | Why |
@@ -182,6 +192,11 @@ It also confirms the MicroVM endpoint rejects unauthenticated requests with
 403 and the controller rejects a request with no access token with 401. Sessions are
 terminated on exit, including on failure.
 
+This script does not validate the authenticated browser/Claude hand-off, OAuth,
+package installation, or the complete initial/update/resume/reset sequence.
+Rehearse those manually; the presence of validation code is not evidence of a
+successful live run.
+
 ## Enumerate the Available Images
 
 ```bash
@@ -198,17 +213,18 @@ the images this account has built. Safe to run before `apply.sh`.
 ```
 
 MicroVMs are not owned by Terraform, so teardown terminates every session from
-**every** image first — including orphans — then destroys the three phases in
+**every image recorded in local Terraform outputs** first, including orphaned sessions for those images, then destroys the three phases in
 reverse order. Keep the local Terraform state until it succeeds.
 
 ## Cost Controls
 
 Each MicroVM uses the **0.5 GB / 0.25 vCPU baseline** (bursting to 2 GB / 1 vCPU),
 auto-suspends after 30 minutes idle, terminates after 30 minutes suspended, and
-has an **8-hour maximum lifetime** — the service ceiling. The lifetime is not
-the cost control; auto-suspend is. An idle VM stops costing compute after 30
+has an **8-hour maximum lifetime** — the service ceiling. Idle suspension and the lifetime limit both bound resource use. An idle VM stops costing compute after 30
 minutes and is gone 30 minutes later, so the full 8 hours is only reached by a
-session someone is still using. One session per user.
+session someone is still using. The application intends one session per user/runtime; lookup and creation are
+not an atomic quota mechanism. Request throttling and reserved Lambda concurrency
+limit throughput, not the total number of live MicroVMs or total spending.
 
 At ARM rates that baseline costs **$0.0315/hour** while RUNNING
 (0.25 vCPU x $0.0000276944 + 0.5 GB x $0.0000036667 per second) and **nothing**
@@ -235,12 +251,73 @@ retention. See [Lambda pricing](https://aws.amazon.com/lambda/pricing/).
 ## Notes and Limits
 
 Submitted code runs inside the MicroVM, and the **VM** — not the interpreter — is
-the security boundary. Neither MicroVM receives an execution role, so neither
-holds AWS credentials; internet egress is enabled. The five-second cell timeout
-is a usability guard, not a sandbox.
+the security boundary. The guest receives temporary credentials for a shared execution role granting
+`s3:ListBucket` and `s3:GetObject` on the demo web bucket. Per-user session
+identity does not create per-user IAM policies. Internet egress is enabled.
+The supervisor cell timeout is eight hours, bounded by the remaining VM lifetime
+and lifecycle policy. Submitted code can use the role permissions.
 
 Session preservation is ephemeral and is not durable storage. Termination,
 expiry or failure loses all session state.
 
 Lambda MicroVMs are available in N. Virginia, Ohio, Oregon, Ireland and Tokyo;
 `01-microvms/variables.tf` enforces that list.
+
+
+## Browser and Claude rehearsal
+
+1. Sign in to the browser and MCP connector with the same Cognito account.
+2. Launch in the browser. Run **Check state**, then **Update state**.
+3. Ask Claude to reuse the session, run `echo "$user $visits ${items[*]}"`, and
+   collect the result with `get_result`. It should see the browser's values.
+4. Install Git or the AWS CLI in either interface, then inspect the installation
+   from the other. The CLI preset calls STS and reads the demo web bucket.
+5. Suspend, confirm SUSPENDED using status, then wake through HTTPS or run a cell.
+   Verify memory, files and installed tools remain.
+6. Reset or terminate and launch again. Session changes disappear; image defaults return.
+
+## Request and state boundaries
+
+The public routes are OAuth discovery, registration and authorization/token
+exchange. `/api/*` and `POST /mcp` resolve the caller's access token in Lambda.
+The SPA uses PKCE; Claude uses the OAuth proxy and its separate Cognito client.
+Session keys combine the normalized email and runtime. DynamoDB holds identifiers
+and cached observations; a separate table holds temporary OAuth exchange records.
+Bash state and the current job/result remain inside the guest.
+
+Status requests use only `GetMicrovm`. Result polling contacts the application
+endpoint and can wake a suspended VM. Lifecycle calls remain synchronous and can
+still time out: the gateway integration is 29 seconds and the controller is 30.
+There is no SQS queue, worker Lambda or Function URL in the current deployment.
+
+Cells share one shell. Do not use `set -e` in its top-level context: a failed
+command can exit the shell. Use `( set -e; ... )` for a fail-fast subshell.
+Commands cannot prompt; stdin is closed. The guest's `dnf` is microdnf and does
+not support every full-dnf option. A dead worker requires reset or termination.
+
+## Development host and incremental deployment
+
+Use Linux with AWS CLI v2 supporting `lambda-microvms`, Terraform, Bash, Python 3
+with pip, zip, jq and curl. The normal AWS credential chain applies; no named
+`default` profile is required. Root scripts currently select `us-east-1`.
+Deployment packages the controller for Python 3.14 ARM64 and vendors boto3.
+No local Docker daemon or web server is required.
+
+Keep Terraform state and generated `deployment.tfvars.json` files for teardown.
+For an existing deployment, print URLs without starting validation:
+
+```bash
+terraform -chdir=02-lambdas output -raw web_url
+terraform -chdir=02-lambdas output -raw mcp_url
+```
+
+Apply backend Terraform edits using the existing generated inputs:
+
+```bash
+terraform -chdir=02-lambdas init
+terraform -chdir=02-lambdas apply -var-file=deployment.tfvars.json
+```
+
+Controller source edits also require rebuilding `dist/controller.zip`;
+`apply.sh` performs packaging. Avoid using either client during teardown.
+Historical images absent from local state are outside destroy.sh's inventory.

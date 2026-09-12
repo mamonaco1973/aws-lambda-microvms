@@ -1,10 +1,8 @@
 locals {
   name = "microvms"
 
-  # One runtime. The map is kept rather than flattened because every resource
-  # below is derived from it, so adding a runtime is still one line plus a
-  # directory -- and because each image carries a one-week minimum storage
-  # charge, so building only what the demo uses is the cheaper default.
+  # One Bash runtime. More runtimes require packaging, presets and validation
+  # alongside their map entries and source directories.
   runtimes = {
     bash = "Bash persistent shell"
   }

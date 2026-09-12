@@ -1,5 +1,5 @@
 # ==============================================================================
-# Controller Lambda — drives the MicroVM lifecycle for the two demo sessions
+# Controller Lambda â€” drives the MicroVM lifecycle for per-user Bash sessions
 # ==============================================================================
 # Launch and resume run from a pre-initialized snapshot in a few seconds, so the
 # controller answers lifecycle calls synchronously. Cells are submitted and

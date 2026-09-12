@@ -1,13 +1,8 @@
 # ==============================================================================
 # MicroVM Images — one pre-initialized snapshot per runtime
 # ==============================================================================
-# Two images built from the same recipe: Lambda runs each Dockerfile, starts the
-# application, waits for its /ready hook, then snapshots disk AND memory. A
-# launch restores a warm interpreter rather than booting and initializing one.
-#
-# The two differ only in their Dockerfile and server implementation. Every other
-# property below is identical, which is the point: the runtime is your business,
-# the platform is AWS's.
+# One Bash image: AWS runs the Dockerfile, initializes the supervisor and
+# shell, waits for readiness, then captures memory and disk state.
 #
 # Sent as JSON through Cloud Control rather than the AWSCC provider: nearly
 # every property of AWS::Lambda::MicrovmImage is Required, including the empty

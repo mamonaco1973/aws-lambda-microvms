@@ -2,9 +2,8 @@
 # ==============================================================================
 # A real, persistent bash shell holding one session's state.
 #
-# The bash counterpart of worker.py and worker.js, deliberately structured the
-# same way so all three can be read side by side. Its variables, arrays,
-# functions and working directory survive suspend and resume
+# This persistent shell holds variables, arrays, functions and working
+# directory across cells and suspend/resume
 # because AWS checkpoints the VM's memory -- there is no save path, no
 # serialization and no replay. When a resumed session still knows `balance`,
 # it is the same shell that set it.
@@ -12,7 +11,7 @@
 # The VM is the security boundary, not this shell. Submitted code runs through
 # eval with full access to the process, which is acceptable only because the
 # MicroVM around it is isolated and its execution role can do nothing but read
-# the four public objects the SPA already serves anonymously. Widen that role
+# objects in the demo web bucket. Widen that role
 # and you have widened what any submitted cell can do.
 #
 # NOT `set -euo pipefail`, and that is deliberate -- it is the one place in this

@@ -1,10 +1,8 @@
 # ==============================================================================
 # Static Assets — the SPA, plus the generated endpoint configuration
 # ==============================================================================
-# config.json is written by apply.sh from the 02-lambdas outputs, so the browser
-# discovers the API URL at page load instead of having it baked into committed
-# source. It is gitignored for that reason. The demo passphrase is NOT in here:
-# it is typed by the user, because anything shipped to the browser is public.
+# apply.sh generates config.json from backend outputs: API URL, Cognito
+# domain and public SPA client ID. Access tokens are obtained at sign-in.
 
 locals {
   # Explicit content types: S3 serves application/octet-stream otherwise, and a

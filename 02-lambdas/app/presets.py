@@ -10,7 +10,7 @@ which is the whole distinction between image memory and session memory.
 
 "Outlast a 30s gateway" and the two installs exist to prove that a cell is
 not bounded by the request that started it. Cells are submitted and polled, so
-the API Gateway in front -- capped at 30 seconds, as they all are -- never sees
+the HTTP API in front does not wait for the cell and therefore never sees
 a long request. The sleep makes that visible; the installs do something useful
 with the room, putting software into the running VM where it persists like any
 other session state.
@@ -36,12 +36,12 @@ echo "updated ${visits} time(s)" > note.txt
 echo 'State updated. Check it, or suspend and come back to it.'""",
 
         # An API Gateway integration would have returned 504 at 30s. This is the
-        # single cheapest proof that the Function URL ceiling is real.
+        # simple proof that submitted work outlives a single HTTP request.
         "gateway": """start=${SECONDS}
 echo 'Sleeping 45 seconds -- longer than API Gateway would ever allow...'
 sleep 45
-echo "Still here after $((SECONDS - start))s. A 30s gateway cap would have"
-echo 'killed this request; the Function URL did not.'""",
+echo "Still here after $((SECONDS - start))s. A synchronous gateway request would have"
+echo 'ended a synchronous request; submission and polling keep this work running.'""",
 
         # The useful version of the same point: real work, and it sticks
         # around because the VM keeps its disk as well as its memory.

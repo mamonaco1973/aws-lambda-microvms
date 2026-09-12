@@ -400,8 +400,7 @@ def act(client, user, runtime, action, code, job=None):
 def response(code, data):
     """Build a Lambda proxy response.
 
-    API Gateway HTTP APIs and Function URLs consume the same shape, so this
-    is unchanged by moving between them.
+    Uses the API Gateway HTTP API proxy response format.
     """
     return {"statusCode": code,
             "headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
