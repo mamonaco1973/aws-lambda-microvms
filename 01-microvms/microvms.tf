@@ -39,8 +39,9 @@ resource "aws_cloudcontrolapi_resource" "image" {
     AdditionalOsCapabilities = []
     EnvironmentVariables     = []
 
-    # Internet egress so submitted code can behave like a real session. There
-    # is deliberately no execution role, so the VM holds no AWS credentials.
+    # Internet egress so submitted code can behave like a real session: it is
+    # what lets a cell reach a dnf mirror, awscli.amazonaws.com, and the S3
+    # endpoint it then calls as the MicroVM's own execution role.
     EgressNetworkConnectors = ["arn:aws:lambda:${var.region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS"]
 
     Logging = { CloudWatch = { LogGroup = aws_cloudwatch_log_group.build[each.key].name } }

@@ -12,12 +12,17 @@
   <header>
     <h1>AWS Lambda MicroVMs</h1>
     <p>
-      Three MicroVMs from three images &mdash; Python, Node.js and Bash.
-      Identical platform configuration, different runtime.
+      One MicroVM running a real bash shell. Its variables, files and
+      installed packages live in the VM's memory and disk, not in a database.
     </p>
     <p>
       <strong>Check state</strong> reads the session. <strong>Update state</strong>
       changes it. Suspend, wake, and check again &mdash; it is the same process.
+    </p>
+    <p>
+      A cell gets the full 15 minutes, not a 30-second gateway limit &mdash;
+      long enough to <strong>install the AWS CLI</strong> and call AWS as the
+      MicroVM's own IAM role, with no access key anywhere in the VM.
     </p>
   </header>
 

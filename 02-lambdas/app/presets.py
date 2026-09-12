@@ -42,18 +42,59 @@ sleep 45
 echo "Still here after $((SECONDS - start))s. A 30s gateway cap would have"
 echo 'killed this request; the Function URL did not.'""",
 
-        # The useful version of the same point: real work, and it sticks around
-        # because the VM keeps its disk as well as its memory.
-        "install": """start=${SECONDS}
-dnf install -y -q git >/dev/null 2>&1
+        # The useful version of the same point: real work, and it sticks
+        # around because the VM keeps its disk as well as its memory.
+        #
+        # dnf's own output is left on stdout and stderr deliberately. A
+        # failure here is almost always the network -- no egress connector,
+        # or a mirror the VM cannot reach -- and that shows up only in dnf's
+        # message. Swallowing it leaves a bare "git: command not found".
+        # The worker folds stderr into stdout, so both come back.
+        "git": """start=${SECONDS}
+dnf install -y git
 echo "dnf install finished in $((SECONDS - start))s"
 git --version
 echo 'Now run Check state -- git is reported as installed, and stays that way'
 echo 'across a suspend and resume.'""",
 
+        # The payoff cell: a real AWS client, authenticating with no keys.
+        # sts:GetCallerIdentity needs no permission, so it answers even if the
+        # role's policy is wrong -- which makes the two calls a useful pair.
+        # The first proves an identity arrived; the second proves it is allowed
+        # to do something. --region is explicit because nothing guarantees the
+        # guest has a region configured.
+        "awscli": """start=${SECONDS}
+dnf install -y unzip
+
+# A subshell, because the working directory is session state like any other:
+# `cd /tmp` out here would break Check state, which reads note.txt relative
+# to wherever the shell happens to be.
+(
+  cd /tmp
+  curl -fsSL -o awscliv2.zip     https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
+  unzip -q -o awscliv2.zip
+  ./aws/install --update
+  rm -rf /tmp/aws /tmp/awscliv2.zip
+)
+
+hash -r                     # bash caches failed lookups of `aws`
+echo "installed in $((SECONDS - start))s"
+aws --version
+
+echo '--- who am I, with no access key anywhere in this VM?'
+aws sts get-caller-identity --region __REGION__
+
+echo '--- read the bucket this page was served from'
+aws s3 ls "s3://__WEB_BUCKET__" --region __REGION__""",
+
         "failure": """echo 'A submitted cell failed; the MicroVM is unaffected' >&2
 false""",
 
         "kill": """exit 17""",
+
+        # Intentionally empty: an unguided cell, for typing into live. Every
+        # other preset is a rehearsed answer; this is the one that shows the
+        # shell is not a menu.
+        "adhoc": "",
     },
 }

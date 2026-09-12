@@ -2,7 +2,8 @@
 # Controller Lambda — drives the MicroVM lifecycle for the two demo sessions
 # ==============================================================================
 # Launch and resume run from a pre-initialized snapshot in a few seconds, so the
-# controller answers API Gateway synchronously; no queue or worker is involved.
+# controller answers the Function URL synchronously; no queue or worker is
+# involved.
 
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/aws/lambda/${var.name}-api"
@@ -42,8 +43,12 @@ resource "aws_lambda_function" "api" {
       BASE_IMAGE_ARN     = local.base_image_arn
       BASE_IMAGE_VERSION = var.base_image_version
       DEMO_PASSPHRASE    = random_pet.passphrase.id
+
+      # The guest's own identity, and the bucket the AWS CLI preset reads.
+      MICROVM_ROLE_ARN = aws_iam_role.microvm.arn
+      WEB_BUCKET       = aws_s3_bucket.web.id
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.api, aws_iam_role_policy.api]
+  depends_on = [aws_cloudwatch_log_group.api, aws_iam_role_policy.api, aws_iam_role_policy.microvm]
 }

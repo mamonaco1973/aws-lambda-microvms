@@ -11,7 +11,9 @@
 #
 # The VM is the security boundary, not this shell. Submitted code runs through
 # eval with full access to the process, which is acceptable only because the
-# MicroVM around it is isolated and holds no AWS credentials.
+# MicroVM around it is isolated and its execution role can do nothing but read
+# the four public objects the SPA already serves anonymously. Widen that role
+# and you have widened what any submitted cell can do.
 #
 # NOT `set -euo pipefail`, and that is deliberate -- it is the one place in this
 # project where the house rule is wrong. Under `-e` a single failing cell would
@@ -28,9 +30,12 @@ _mv_raw="${_mv_scratch}/cell.raw"
 _mv_capped="${_mv_scratch}/cell.out"
 trap 'rm -rf "${_mv_scratch}"' EXIT
 
-# Matches the Python and Node workers, so a runaway loop cannot return a
-# response too large for API Gateway.
-_mv_output_limit=16000
+# A runaway loop must not return a response too large to carry back. Raised
+# from 16000 because cells now do real work: a `dnf install` transaction
+# summary alone runs a few kilobytes, and truncation keeps the HEAD of the
+# output -- so an over-cap cell loses its tail, which is exactly where a
+# package manager puts the error it failed with.
+_mv_output_limit=64000
 
 # ------------------------------------------------------------------------------
 # Millisecond clock — sets _mv_ms

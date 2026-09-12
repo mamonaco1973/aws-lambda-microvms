@@ -136,9 +136,9 @@ IMAGES=$(terraform -chdir=01-microvms output -json images)
 echo "${IMAGES}" | jq -r 'to_entries[] | "NOTE: " + .key + " image " + .value.image_name + " version " + .value.image_version'
 
 # ------------------------------------------------------------------------------
-# BUILD API GATEWAY AND THE CONTROLLER LAMBDA
+# BUILD THE CONTROLLER LAMBDA AND ITS FUNCTION URL
 # ------------------------------------------------------------------------------
-echo "NOTE: Deploying API Gateway and the controller Lambda..."
+echo "NOTE: Deploying the controller Lambda and its Function URL..."
 
 jq -n --arg region "${AWS_DEFAULT_REGION}" --arg base "${BASE_IMAGE_VERSION}" \
       --argjson images "${IMAGES}" \

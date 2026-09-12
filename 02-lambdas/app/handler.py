@@ -33,6 +33,16 @@ BASE_IMAGE_ARN = os.environ["BASE_IMAGE_ARN"]
 BASE_IMAGE_VERSION = os.environ["BASE_IMAGE_VERSION"]
 DEMO_PASSPHRASE = os.environ["DEMO_PASSPHRASE"]
 
+# Passed to RunMicrovm, which is the MicroVM equivalent of an EC2 instance
+# profile: the guest authenticates as this role with no key material inside it.
+# Scoped to reading the web bucket only, because submitted code runs through
+# eval -- whatever this role can do, anything typed into the editor can do.
+MICROVM_ROLE_ARN = os.environ["MICROVM_ROLE_ARN"]
+
+# Substituted into the AWS CLI preset so the cell can name a real bucket
+# without the browser having to assemble the command.
+WEB_BUCKET = os.environ["WEB_BUCKET"]
+
 # Launch settings applied to every MicroVM. Kept in one place because the
 # configuration panel reports them back verbatim -- what the browser displays
 # is what was actually sent to RunMicrovm, not a hand-written copy.
@@ -116,6 +126,16 @@ def pages(client, method, **params):
 # Configuration Reporting — what the EC2 comparison panel renders
 # ==============================================================================
 
+def presets_for(runtime):
+    """Return a runtime's presets with deployment-specific values filled in.
+
+    Substituted here rather than in presets.py so that file stays a plain
+    catalogue of shell snippets with no import of deployment state.
+    """
+    return {k: v.replace("__WEB_BUCKET__", WEB_BUCKET).replace("__REGION__", REGION)
+            for k, v in PRESETS[runtime].items()}
+
+
 def spec(runtime):
     """Describe how this runtime's MicroVMs are configured.
 
@@ -137,7 +157,7 @@ def spec(runtime):
         "baseline_vcpu": BASELINE_MIB / 2048,          # 2 GB == 1 vCPU
         "burst_mib": BASELINE_MIB * 4,                 # vertical scale ceiling
         "disk_gb": 8,
-        "execution_role": None,                        # no AWS credentials in the VM
+        "execution_role": MICROVM_ROLE_ARN,            # read-only on the web bucket
         "ingress_connector": "ALL_INGRESS",
         "egress_connector": "INTERNET_EGRESS",
         "shell_enabled": False,                        # no SHELL_INGRESS attached
@@ -246,13 +266,14 @@ def launch(client, runtime):
         # Reaches the /run hook, which generates this session's nonce. Identity
         # must be created after the snapshot, never baked into it.
         runHookPayload=json.dumps({"runtime": runtime}),
+        executionRoleArn=MICROVM_ROLE_ARN,
         ingressNetworkConnectors=[
             f"arn:aws:lambda:{REGION}:aws:network-connector:aws-network-connector:ALL_INGRESS"],
         idlePolicy={"autoResumeEnabled": True,
                     "maxIdleDurationSeconds": IDLE_SUSPEND_SECONDS,
                     "suspendedDurationSeconds": SUSPENDED_TTL_SECONDS},
         maximumDurationInSeconds=MAX_LIFETIME_SECONDS,
-        logging={"disabled": {}})  # No execution role, so no AWS credentials inside.
+        logging={"disabled": {}})  # Guest logs would carry submitted code.
 
     session = {"id": response["microvmId"], "endpoint": response["endpoint"]}
     save(runtime, session)  # Persist BEFORE the first HTTP call, so cleanup finds it.
@@ -304,7 +325,11 @@ def act(client, runtime, action, code):
 # ==============================================================================
 
 def response(code, data):
-    """Build an API Gateway proxy response."""
+    """Build a Lambda proxy response.
+
+    The Function URL consumes the same shape API Gateway did, so this is
+    unchanged by the move off the gateway.
+    """
     return {"statusCode": code,
             "headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
             "body": json.dumps(data)}
@@ -323,7 +348,7 @@ def authorized(event):
 
 
 def api(event, context):
-    """Handle one API Gateway HTTP API request."""
+    """Handle one Function URL request."""
     if not authorized(event):
         return response(401, {"error": "Wrong or missing demo passphrase"})
     try:
@@ -337,7 +362,7 @@ def api(event, context):
         if route == "GET /api/config":
             return response(200, {
                 "runtimes": RUNTIMES,
-                "presets": {r: PRESETS[r] for r in RUNTIMES},
+                "presets": {r: presets_for(r) for r in RUNTIMES},
                 "specs": {r: spec(r) for r in RUNTIMES},
             })
 

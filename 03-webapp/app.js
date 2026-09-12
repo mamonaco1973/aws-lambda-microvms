@@ -15,9 +15,11 @@ const PRESET_LABELS = {
   check: 'Check state',
   update: 'Update state',
   gateway: 'Outlast a 30s gateway',
-  install: 'Install a package',
+  git: 'Install GIT',
+  awscli: 'Install AWS CLI',
   failure: 'Raise an error',
   kill: 'Kill this shell',
+  adhoc: 'Adhoc commands',
 };
 
 // -----------------------------------------------------------------------------
@@ -43,7 +45,8 @@ const COMPARISON = [
   ['Endpoint', (s, live) => live?.endpoint ?? '(not launched)', 'Public DNS / Elastic IP'],
   ['Ingress', s => s.ingress_connector, 'Security group inbound rules'],
   ['Egress', s => s.egress_connector, 'Security group outbound + IGW'],
-  ['Execution role', s => s.execution_role ?? 'none', 'IAM instance profile'],
+  ['Execution role', s => s.execution_role?.split('/').pop() ?? 'none',
+   'IAM instance profile'],
   ['Launch payload', s => JSON.stringify(s.run_hook_payload), 'User data (both 16 KB)'],
   ['Initialisation', s => `/run hook on port ${s.hook_port}`, 'cloud-init'],
   ['Shell access', s => (s.shell_enabled ? 'SHELL_INGRESS attached' : 'not enabled'), 'SSH keypair on :22'],
@@ -156,7 +159,7 @@ function buildPanel(runtime) {
 
   const select = panel.querySelector('select');
   for (const [key, label] of Object.entries(PRESET_LABELS)) {
-    if (!config.presets[runtime][key]) continue;
+    if (!(key in config.presets[runtime])) continue;
     const option = document.createElement('option');
     option.value = key;
     option.textContent = label;

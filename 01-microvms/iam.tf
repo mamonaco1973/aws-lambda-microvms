@@ -2,8 +2,8 @@
 # Build Role and Logs — permissions Lambda assumes while building the image
 # ==============================================================================
 # Scoped to this deployment's own artifacts and log groups. The role exists
-# only for the duration of a build; MicroVMs launched from a finished image
-# receive no execution role at all, so submitted code holds no AWS credentials.
+# only for the duration of a build and is unrelated to the role a launched
+# MicroVM runs as -- that one is the execution role in 02-lambdas/iam.tf.
 
 # Build output is the only way to diagnose a Dockerfile or /ready hook failure.
 # One-day retention keeps that available without accruing log cost.
