@@ -43,12 +43,15 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # Closed on purpose, unlike the cost connector this pattern came from. Every
-  # signed-up user gets their own billable MicroVM, so self-service sign-up
-  # would let a stranger who finds the URL launch VMs on your account. Create
-  # users with `aws cognito-idp admin-create-user`.
+  # Self-service sign-up through the hosted UI, so anyone can register and try
+  # the demo without an operator creating them an account first.
+  #
+  # Know what this costs: every user who signs up can launch their own MicroVM,
+  # which bills while it runs. The bounds are the idle policy (auto-suspend),
+  # the maximum lifetime, and the controller's reserved concurrency -- not the
+  # user list. Watch the account, or set allow_admin_create_user_only = true.
   admin_create_user_config {
-    allow_admin_create_user_only = true
+    allow_admin_create_user_only = false
   }
 }
 

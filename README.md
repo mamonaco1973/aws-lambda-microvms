@@ -133,12 +133,12 @@ through the OAuth proxy. Both resolve to one email, and the controller keys the
 MicroVM session on it — so **your browser and Claude drive the same sandbox**.
 Install a package from the web app, then ask Claude what is installed.
 
-There is no self-service sign-up: every user gets their own billable MicroVM, so
-create accounts deliberately.
-
-```bash
-aws cognito-idp admin-create-user   --user-pool-id <printed by validate.sh>   --username you@example.com   --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true
-```
+Sign-up is self-service: choose **Sign up** in the hosted UI and Cognito
+verifies the address by email. Note what that implies — each new user can launch
+their own billable MicroVM. The bounds are the idle policy, the maximum lifetime
+and reserved concurrency, not the user list. To close it instead, set
+`allow_admin_create_user_only = true` in `cognito.tf` and create users with
+`aws cognito-idp admin-create-user`.
 
 `config.json` carries the API URL, the hosted-UI domain and the SPA's client id.
 All three are public by design — a public OAuth client is exactly what PKCE
