@@ -245,7 +245,13 @@ function render(runtime, data, sampled = false) {
   if (data.result) {
     const timing = data.result.execution_ms === undefined
       ? '' : `\n[execution: ${Math.round(data.result.execution_ms)}ms]`;
-    panel.querySelector('pre').textContent = data.result.stdout + timing;
+    const out = panel.querySelector('pre');
+    out.textContent = data.result.stdout + timing;
+
+    // Pin to the bottom. A dnf transaction or an install log runs well
+    // past the pane, and everything worth reading -- the version, the
+    // identity, the timing line -- is at the end, not the top.
+    out.scrollTop = out.scrollHeight;
   }
 }
 
