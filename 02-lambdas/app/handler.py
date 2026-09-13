@@ -114,17 +114,13 @@ BASELINE_MIB = 512
 # leaving it running.
 IDLE_SUSPEND_SECONDS = 1800
 
-# Must stay below MAX_LIFETIME_SECONDS or idle suspend can never fire -- the VM
-# would be terminated at the same instant it first became eligible.
-SUSPENDED_TTL_SECONDS = 1800
+# Keep suspended state available throughout the session's remaining lifetime.
+# This is a separate timer from idle suspension; it must not discard the
+# sandbox just 30 minutes after it suspends.
+SUSPENDED_TTL_SECONDS = 28800
 
-# The service maximum, 8 hours. Set to the ceiling deliberately: a sandbox that
-# an agent installs tools into over the course of a working session should not
-# expire mid-conversation, and nothing is gained by picking a smaller arbitrary
-# number. Cost is bounded by auto-suspend rather than by this -- an idle VM
-# stops costing compute after IDLE_SUSPEND_SECONDS and is terminated
-# SUSPENDED_TTL_SECONDS later, so the full 8 hours is only ever reached by a
-# session someone is actually using.
+# Eight hours total from launch, including time spent suspended. Resuming does
+# not reset this deadline. Idle suspension still stops running compute charges.
 MAX_LIFETIME_SECONDS = 28800
 APP_PORT = 8080
 HOOK_PORT = 8081
