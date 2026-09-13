@@ -113,6 +113,12 @@ from that one fact.
 - **The controller's generic 503 used to swallow the real exception.** It now
   prints a traceback to CloudWatch. Keep that — an AccessDenied and a service
   outage are indistinguishable without it.
+- **PKCE is mandatory for ChatGPT, optional for Claude.** ChatGPT will not
+  create a connector unless `/.well-known/oauth-authorization-server`
+  advertises `code_challenge_methods_supported: ["S256"]`, and it then sends a
+  real challenge and verifier. Claude sends neither today. `oauth.py` enforces
+  a challenge when one was supplied and allows the flow when it was not, so
+  both clients work — do not make it unconditional without checking Claude.
 - **Python's `write_text` on Windows emits CRLF.** `.gitattributes` says `eol=lf`
   for every source type; normalize after scripted edits or the Linux checkout
   fights you.

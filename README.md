@@ -153,11 +153,17 @@ exists to make safe.
 
 ### Connecting Claude
 
-Add the printed `MCP` URL as a custom connector. Claude discovers the
+Add the printed `MCP` URL as a custom connector. The client discovers the
 authorization server, registers itself, opens the Cognito hosted UI for you to
 sign in, and then calls the tools: `launch_session`, `run_cell`, `get_result`,
 `get_file`, `share_file`, `session_status`, `suspend_session`, `reset_session`,
 `terminate_session`.
+
+The OAuth proxy enforces **PKCE** (RFC 7636, S256 only). Claude does not
+currently send a challenge and still works; ChatGPT requires one and refuses to
+create the connector unless the metadata advertises
+`code_challenge_methods_supported`. Either way the one-time `mac_` code is
+bound to the client that asked for it.
 
 **Getting files back.** A cell's stdout is capped at 64 KB and truncated, so
 returning an image by base64-ing it into cell output does not work — the model
