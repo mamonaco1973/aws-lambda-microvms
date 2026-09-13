@@ -1,4 +1,4 @@
-# AWS Lambda MicroVMs - A Shared Sandbox for Browser and Claude
+# Claude Connector for Lambda MicroVMs
 
 This project demonstrates **AWS Lambda MicroVMs**, the serverless compute
 primitive AWS launched in June 2026 that runs isolated Firecracker VMs for up to
@@ -19,6 +19,15 @@ milliseconds; the browser polls for the answer. Because the MicroVM already
 holds the session's state, it can just as easily hold the job and its result —
 so cell execution does not hold a request open and can outlast the deployed
 HTTP API integration timeout. Lifecycle requests can still time out. The ceiling on a cell is the MicroVM's own lifetime.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.svg">
+  <img alt="Claude and a web console reach one MicroVM through an API Gateway and a controller Lambda" src="architecture-light.svg">
+</picture>
+
+Cognito, the session table and the OAuth proxy are real and deliberately absent
+above: none of them is on the request path, and a box nobody explains is
+clutter. Regenerate the diagram with `python make_diagram.py`.
 
 ![webapp](webapp.png)
 
