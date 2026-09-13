@@ -186,6 +186,98 @@ That last row is the point: **image memory** is baked in at build and identical
 in every VM, while **session memory** belongs to one MicroVM and dies with it.
 Run `Update state` repeatedly and `visits` keeps climbing — until you terminate.
 
+## Sample Claude Prompts
+
+Things to ask once the connector is attached. The sandbox is launched
+implicitly — you never have to ask for it.
+
+### Prove it is one persistent shell
+
+```
+Set a variable called visits to 1 in my sandbox.
+```
+```
+Increment visits and tell me what it is now.
+```
+
+Then suspend it from the web app and ask again. The answer keeps climbing,
+because the shell holding that variable was frozen rather than restarted.
+
+### Install something, and watch nothing time out
+
+```
+Install matplotlib in my sandbox.
+```
+
+This takes minutes, and no HTTP request stays open for it: `run_cell` returns a
+job id and Claude polls `get_result`. Ask what is installed after a suspend and
+resume and it is still there — disk survives the checkpoint alongside memory.
+
+### Get a picture back
+
+Ask for the image and it appears in the conversation, because `get_file`
+returns MCP image content rather than text. Do **not** ask Claude to print a
+file — cell output is capped at 64 KB and truncated.
+
+Pin the parameters in the prompt. Without them Claude picks different values
+each run and you get a different picture every time, which matters if you are
+filming or comparing.
+
+```
+Draw a spirograph in my sandbox: R=220, r=65, d=140, inferno
+colormap along the curve, black background, no axes.
+```
+
+![spirograph](spiral.png)
+
+```
+Draw a fractal tree in my sandbox: 12 levels, 25 degree branch
+angle, colored by depth with inferno, black background, no axes.
+```
+
+![fractal tree](fractal.png)
+
+```
+Plot the Lorenz attractor in my sandbox, x vs z, inferno colormap
+along the trajectory, black background, no axes.
+```
+
+![lorenz attractor](lorenz.png)
+
+`inferno` and a black background are chosen to sit next to this project's own
+palette; `plasma` lifts the low end if the image is composited against a dark
+UI. Asking for `x vs z` on the Lorenz matters — left alone Claude often renders
+it in 3D, and the camera angle then changes on every run.
+
+### Call AWS as the sandbox itself
+
+```
+Install the AWS CLI in my sandbox, then tell me what identity it has.
+```
+
+The MicroVM authenticates as its own IAM role with no key material stored
+anywhere inside it — the MicroVM equivalent of an EC2 instance profile. That
+role is deliberately almost powerless: it can read the objects the SPA already
+serves publicly, and nothing else. A write will be refused.
+
+### Get a file out
+
+```
+Tar up everything in /tmp and give me a download link.
+```
+
+Large files, and anything with nothing to render, come back as a short
+`/dl/…` link rather than inline content.
+
+### Start over
+
+```
+Reset my sandbox.
+```
+
+One tool call: terminate, wait for the VM to actually be gone, and launch a
+clean one. Everything installed is lost, which is the point.
+
 ## Validate the Build
 
 ```bash
