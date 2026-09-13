@@ -48,12 +48,15 @@ resource "aws_iam_role_policy" "api" {
         Action   = ["lambda:ListMicrovms"]
         Resource = "*"
       },
-      # Staging for files returned as download links. PutObject only: the
-      # controller writes an object and presigns a read of it, and a presigned
-      # URL needs no further permission of its own.
+      # Staging for files returned as download links.
+      #
+      # GetObject as well as PutObject, and it is not optional: a presigned URL
+      # carries the SIGNER's identity, so whoever clicks it is acting as this
+      # role. Without GetObject here the link resolves to AccessDenied naming
+      # this role -- which reads like a bucket-policy problem and is not one.
       {
         Effect   = "Allow"
-        Action   = ["s3:PutObject"]
+        Action   = ["s3:PutObject", "s3:GetObject"]
         Resource = "${aws_s3_bucket.share.arn}/*"
       },
       # Required, and confirmed the hard way: RunMicrovm with an execution

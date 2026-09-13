@@ -37,18 +37,6 @@ Key capabilities demonstrated:
 5. **Infrastructure as Code (IaC)** – Terraform provisions the Bash image, Cognito,
    API Gateway, Lambda, DynamoDB and S3 web hosting.
 
-```mermaid
-flowchart LR
-    Browser[Browser SPA] --> API[API Gateway HTTP API]
-    Claude[Claude MCP connector] --> API
-    Cognito[Cognito identity] --> Browser
-    Cognito --> Claude
-    API --> Controller[Controller Lambda + OAuth proxy]
-    Controller --> Metadata[DynamoDB: session IDs and OAuth exchanges]
-    Controller -->|Lifecycle APIs and authenticated HTTPS| VM[MicroVM: supervisor + persistent Bash]
-    VM -->|Guest IAM role: read only| S3[Demo web bucket]
-```
-
 ## MicroVM Concepts, in EC2 Terms
 
 The application's main panel is a configuration table that reports how each
@@ -276,7 +264,6 @@ expiry or failure loses all session state.
 
 Lambda MicroVMs are available in N. Virginia, Ohio, Oregon, Ireland and Tokyo;
 `01-microvms/variables.tf` enforces that list.
-
 
 ## Browser and Claude rehearsal
 
