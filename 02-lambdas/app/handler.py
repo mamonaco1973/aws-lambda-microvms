@@ -333,10 +333,22 @@ def status(client, runtime, session):
 
 
 def launch(client, user, runtime):
-    """Run a new MicroVM for this user and record its first observation."""
+    """Run a new MicroVM for this user, or report the one already running.
+
+    Idempotent by design, because the MCP tool that calls it advertises itself
+    that way: an agent quite reasonably calls launch_session before doing
+    anything else, and refusing that with an error -- as this did -- makes the
+    safe move look like a failure. Returning the live session is what the
+    caller wanted in either case.
+
+    The refusal this replaced was guarding against a stray Launch click
+    orphaning a billable MicroVM. It cannot: the session record is keyed per
+    user, so a second launch would have overwritten the id of the VM it was
+    protecting, which is the very thing that orphans one.
+    """
     existing = load(user, runtime)
     if existing and state_of(client, existing["id"]) != "TERMINATED":
-        raise ValueError("Terminate the existing session first")
+        return status(client, runtime, existing)
 
     image = IMAGES[runtime]
     start = time.perf_counter()
