@@ -13,8 +13,8 @@ along with everything else.
 
 Two servers on two ports, deliberately:
 
-  * 8080 serves the application (/state, /execute, /result). Endpoint auth
-    tokens are scoped to this port only.
+  * 8080 serves the application (/state, /execute, /result, /file). Endpoint
+    auth tokens are scoped to this port only.
   * 8081 serves the AWS lifecycle hooks. Keeping hooks off the application port
     means a leaked application token cannot drive the session's lifecycle, and the
     authentication checks in the controller prove that separation holds.
@@ -25,6 +25,7 @@ interpreter, not the package list.
 """
 import argparse
 from collections import deque
+import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -33,6 +34,7 @@ import queue
 import subprocess
 import threading
 import time
+import urllib.parse
 import uuid
 
 # AWS posts lifecycle hooks to this fixed path prefix on the configured port.
@@ -47,6 +49,16 @@ HOOK = "/aws/lambda-microvms/runtime/v1/"
 # to be justified. Still a usability guard and emphatically not a sandbox: the
 # VM is the security boundary.
 CELL_TIMEOUT = 28800
+
+# Largest file /file will return. Generous because this is the one path that
+# does NOT go through the cell protocol -- a cell's stdout is capped at 64 KB
+# and truncated from the head, which is why returning a file by base64-ing it
+# into a cell's output does not work and should not be attempted.
+#
+# The real limit downstream is smaller: the controller inlines a small file
+# into an MCP response and uploads a larger one to S3, and it enforces its own
+# caps. This one only stops a request for /dev/zero from exhausting memory.
+MAX_FILE_BYTES = 25 * 1024 * 1024
 
 
 class Lab:
@@ -323,12 +335,49 @@ def handler(lab, hooks=False):
                 self.send_json({"error": "Not found"}, 404)
             elif self.path in {"/state", "/health"}:
                 self.send_json(lab.state())
+            elif self.path.startswith("/file?"):
+                self.send_file()
             elif self.path.startswith("/result/"):
                 # Polled, so it must stay cheap: no lock contention with a
                 # running cell beyond the dictionary read inside result().
                 self.send_json(lab.result(self.path[len("/result/"):]))
             else:
                 self.send_json({"error": "Not found"}, 404)
+
+        def send_file(self):
+            """Return one file from the session's filesystem as raw bytes.
+
+            Deliberately unrestricted as to path: a cell can already read
+            anything this process can, so a traversal guard here would prevent
+            nothing while breaking the legitimate case of an absolute path. The
+            MicroVM is the boundary, as everywhere else in this project.
+            """
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            path = (query.get("path") or [""])[0]
+            if not path:
+                self.send_json({"error": "No path given"}, 400)
+                return
+            try:
+                size = os.path.getsize(path)
+                if size > MAX_FILE_BYTES:
+                    self.send_json({"error": f"File is {size} bytes; the limit "
+                                             f"is {MAX_FILE_BYTES}."}, 413)
+                    return
+                with open(path, "rb") as handle:
+                    body = handle.read()
+            except OSError as exc:
+                self.send_json({"error": str(exc)}, 404)
+                return
+
+            # Guessed from the name, because nothing else here knows better and
+            # the caller needs it to decide between inline display and a link.
+            mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("X-Microvm-File-Name", os.path.basename(path))
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_POST(self):
             try:

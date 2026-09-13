@@ -53,6 +53,7 @@ resource "aws_lambda_function" "api" {
       # The guest's own identity, and the bucket the AWS CLI preset reads.
       MICROVM_ROLE_ARN = aws_iam_role.microvm.arn
       WEB_BUCKET       = aws_s3_bucket.web.id
+      SHARE_BUCKET     = aws_s3_bucket.share.id
     }
   }
 

@@ -48,6 +48,14 @@ resource "aws_iam_role_policy" "api" {
         Action   = ["lambda:ListMicrovms"]
         Resource = "*"
       },
+      # Staging for files returned as download links. PutObject only: the
+      # controller writes an object and presigns a read of it, and a presigned
+      # URL needs no further permission of its own.
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${aws_s3_bucket.share.arn}/*"
+      },
       # Required, and confirmed the hard way: RunMicrovm with an execution
       # role fails with "no identity-based policy allows the iam:PassRole
       # action" without it. Worth knowing because the least-privilege example

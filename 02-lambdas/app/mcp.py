@@ -66,7 +66,12 @@ Other things that are true here:
     `-y` to anything that would ask.
   * One cell runs at a time. A second run_cell while one is running is refused,
     not queued.
-  * If the shell does die, reset_session gives you a clean one."""
+  * If the shell does die, reset_session gives you a clean one.
+  * To show the user a file the sandbox produced, use get_file -- never print
+    it through a cell. Cell output is capped at 64 KB and truncated, so
+    base64-ing an image into a cell and reassembling it in chunks does not
+    work. get_file returns an image rendered in the conversation, and falls
+    back to a download link when the file is too large."""
 _SERVER_NAME = "microvm-sandbox-mcp"
 _SERVER_VER  = "1.0.0"
 
@@ -123,6 +128,42 @@ TOOL_REGISTRY = [
             "type": "object",
             "properties": {"job": {"type": "string", "description": "Job id from run_cell."}},
             "required": ["job"],
+        },
+    },
+    {
+        "name": "get_file",
+        "description": (
+            "Return a file from the sandbox. An image comes back rendered in "
+            "the conversation and a text file as its contents, so this is how "
+            "you show the user something a cell produced -- a plot, a chart, "
+            "a rendered image, a generated document.\n\n"
+            "Use this INSTEAD of printing a file through run_cell. A cell's "
+            "output is capped and truncated, so base64-ing a file into a cell "
+            "and reassembling it does not work; this path has no such limit. "
+            "A file too large to show, or of a type with nothing to render, "
+            "comes back as a download link automatically."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"path": {"type": "string",
+                                    "description": "Path to the file in the sandbox."}},
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "share_file",
+        "description": (
+            "Upload a file from the sandbox and return a time-limited download "
+            "link for the user. Use this for anything the user should keep or "
+            "open outside the conversation -- an archive, a dataset, a large "
+            "image -- and for files too big to display. The link expires; give "
+            "it to the user rather than trying to read it yourself."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"path": {"type": "string",
+                                    "description": "Path to the file in the sandbox."}},
+            "required": ["path"],
         },
     },
     {
@@ -304,8 +345,14 @@ def _handle_tools_call(req, user_email, run_tool):
         logger.exception("Tool invocation failed: %s", tool_name)
         return _rpc_error(req.get("id"), -32603, f"Tool invocation failed: {exc}")
 
-    # Returned as pretty JSON text: the model reads these values back to the
-    # user, and a job id or an exit code buried in one line is easy to misread.
+    # A tool that produced real content -- an image, a file's text -- hands
+    # back ready-made MCP content blocks, which go through untouched so the
+    # client can render them. Everything else is status, and reads better as
+    # pretty JSON: a job id or an exit code buried in one line is easy to
+    # misread when the model reads it back to the user.
+    if isinstance(result, dict) and "_content" in result:
+        return _rpc_ok(req.get("id"), {"content": result["_content"]})
+
     text = json.dumps(result, indent=2, default=str)
     return _rpc_ok(req.get("id"), {"content": [{"type": "text", "text": text}]})
 

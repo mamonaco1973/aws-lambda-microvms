@@ -40,3 +40,39 @@ resource "aws_s3_bucket_policy" "web" {
   # A policy granting public read is rejected while block_public_policy is on.
   depends_on = [aws_s3_bucket_public_access_block.web]
 }
+
+# ==============================================================================
+# Share Bucket — staging for files handed back as download links
+# ==============================================================================
+# Private, and written only by the controller Lambda. The MicroVM never touches
+# it: the controller already holds credentials, so staging uploads here keeps
+# the guest's execution role as small as it is.
+#
+# Nothing here is durable. Objects are download-once-ish scratch behind a
+# presigned URL, and the lifecycle rule reaps them the next day whether or not
+# anyone collected them.
+resource "aws_s3_bucket" "share" {
+  bucket        = "${var.name}-share-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_public_access_block" "share" {
+  bucket                  = aws_s3_bucket.share.id
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = true
+}
+
+# One day is already far longer than the one-hour presigned URL; this exists so
+# a forgotten object cannot accrue storage cost indefinitely.
+resource "aws_s3_bucket_lifecycle_configuration" "share" {
+  bucket = aws_s3_bucket.share.id
+
+  rule {
+    id     = "expire-staged-downloads"
+    status = "Enabled"
+    filter {}
+    expiration { days = 1 }
+  }
+}

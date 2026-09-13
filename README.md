@@ -159,7 +159,21 @@ exists to make safe.
 Add the printed `MCP` URL as a custom connector. Claude discovers the
 authorization server, registers itself, opens the Cognito hosted UI for you to
 sign in, and then calls the tools: `launch_session`, `run_cell`, `get_result`,
-`session_status`, `suspend_session`, `reset_session`, `terminate_session`.
+`get_file`, `share_file`, `session_status`, `suspend_session`, `reset_session`,
+`terminate_session`.
+
+**Getting files back.** A cell's stdout is capped at 64 KB and truncated, so
+returning an image by base64-ing it into cell output does not work — the model
+will try to chunk it and fail slowly. `get_file` exists instead: the MicroVM
+serves the bytes on its own `/file` endpoint, and the controller returns them
+as MCP content, so an image renders directly in the conversation. Ask for a
+plot and you see the plot.
+
+Files over 750 KB, and anything with nothing to render, fall back to
+`share_file` behaviour: the controller stages the object in a private bucket
+and returns a presigned URL that expires in an hour. The **MicroVM never
+touches S3** — the controller already holds credentials, so routing the upload
+through it leaves the guest's execution role as small as it is.
 
 > **This is a demo, not a product.** A session's execution role is the ceiling on
 > what any submitted cell can do, and cells run through `eval`. Per-user identity

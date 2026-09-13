@@ -16,11 +16,13 @@ module, so a second image needs no change here.
 DynamoDB holds only identifiers and the last application sample. Interpreter
 state lives exclusively inside each MicroVM and is never serialized out.
 """
+import base64
 import json
 import os
 import re
 import time
 import traceback
+import urllib.parse
 import urllib.error
 import urllib.request
 import uuid
@@ -52,6 +54,8 @@ TOOL_ACTIONS = {
     "suspend_session": "suspend",
     "reset_session": "reset",
     "terminate_session": "terminate",
+    "get_file": "file",
+    "share_file": "share",
 }
 
 REGION = os.environ["AWS_REGION"]
@@ -69,6 +73,26 @@ MICROVM_ROLE_ARN = os.environ["MICROVM_ROLE_ARN"]
 # Substituted into the AWS CLI preset so the cell can name a real bucket
 # without the browser having to assemble the command.
 WEB_BUCKET = os.environ["WEB_BUCKET"]
+
+# Where files too large to inline are staged for download. Written by THIS
+# function, never by the MicroVM: the controller already holds credentials, so
+# routing the upload through here leaves the guest's execution role untouched.
+SHARE_BUCKET = os.environ["SHARE_BUCKET"]
+
+# Below this, a file is returned inline in the MCP response and rendered in the
+# conversation. Base64 inflates by a third and the result has to survive the
+# model's context, so this is deliberately well under what the transport would
+# bear. Anything larger becomes a presigned link instead.
+INLINE_LIMIT = 750_000
+
+# How long a download link lives. Long enough to click, short enough that a URL
+# pasted somewhere it should not be stops working the same day.
+SHARE_EXPIRY_SECONDS = 3600
+
+# Types that are text despite not saying text/*. Worth listing because these
+# are exactly what a cell tends to produce -- a JSON result, an SVG plot.
+TEXTUAL = {"application/json", "application/xml", "image/svg+xml",
+           "application/x-sh", "application/javascript"}
 
 # Launch settings applied to every MicroVM. Kept in one place because the
 # configuration panel reports them back verbatim -- what the browser displays
@@ -334,6 +358,96 @@ def launch(client, user, runtime):
     return status(client, runtime, session)
 
 
+def fetch_file(client, session, path):
+    """Read one file out of a MicroVM and return it with its metadata.
+
+    Bytes take their own endpoint rather than a cell, because a cell's stdout
+    is capped and truncated -- base64 through the cell protocol is the thing
+    this exists to avoid.
+
+    Returns:
+        (body, mime, name)
+
+    Raises:
+        ValueError: The MicroVM refused the request, with its reason.
+    """
+    endpoint = session["endpoint"]
+    if not endpoint.startswith("https://"):
+        endpoint = "https://" + endpoint
+    query = urllib.parse.urlencode({"path": path})
+    request = urllib.request.Request(
+        f"{endpoint}/file?{query}",
+        headers={"X-aws-proxy-auth": token(client, session["id"]),
+                 "X-aws-proxy-port": str(APP_PORT)})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return (response.read(),
+                    response.headers.get("Content-Type", "application/octet-stream"),
+                    response.headers.get("X-Microvm-File-Name", "file"))
+    except urllib.error.HTTPError as exc:
+        # The VM answers a refusal as JSON, so surface its message rather than
+        # a bare status the user can do nothing with.
+        try:
+            message = json.load(exc).get("error", "")
+        except ValueError:
+            message = ""
+        raise ValueError(message or f"MicroVM returned HTTP {exc.code}") from None
+
+
+# Leading bytes of the types worth recognising. Checked before the name,
+# because the MicroVM can only guess from the extension and a file written by a
+# cell may have a misleading one or none at all -- `plot`, or `out.txt` holding
+# a PNG. Getting this wrong means an image returned as mojibake text.
+MAGIC = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"%PDF-", "application/pdf"),
+)
+
+
+def sniff(body, declared):
+    """Decide a file's type from its content, falling back to its name.
+
+    Args:
+        body: The file's bytes.
+        declared: What the MicroVM guessed from the extension.
+
+    Returns:
+        A media type. Text is detected by decoding rather than by magic bytes,
+        since it has none -- anything that is valid UTF-8 and free of NULs is
+        treated as text so it can be returned readable.
+    """
+    for prefix, mime in MAGIC:
+        if body.startswith(prefix):
+            return mime
+    if body.lstrip()[:5].lower().startswith(b"<svg") or b"<svg" in body[:200].lower():
+        return "image/svg+xml"
+    if b"\x00" not in body[:8192]:
+        try:
+            body[:8192].decode("utf-8")
+            # Keep a more specific declared text type (text/csv, application
+            # /json) rather than flattening everything to text/plain.
+            if declared.startswith("text/") or declared in TEXTUAL:
+                return declared
+            return "text/plain"
+        except UnicodeDecodeError:
+            pass
+    return declared
+
+
+def share(body, mime, name):
+    """Stage a file in S3 and return a presigned URL for it."""
+    s3 = boto3.client("s3", region_name=REGION)
+    stamped = f"{uuid.uuid4().hex[:12]}/{name}"
+    s3.put_object(Bucket=SHARE_BUCKET, Key=stamped, Body=body, ContentType=mime)
+    return s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": SHARE_BUCKET, "Key": stamped},
+        ExpiresIn=SHARE_EXPIRY_SECONDS)
+
+
 def act(client, user, runtime, action, code, job=None):
     """Dispatch one lifecycle action against a runtime's session.
 
@@ -435,6 +549,41 @@ def run_tool(tool_name, arguments, user):
         if not session:
             return {"state": "NONE", "note": "No sandbox. Call launch_session."}
         return status(client, runtime, session)
+
+    if action in ("file", "share"):
+        session = load(user, runtime)
+        if not session:
+            raise ValueError("Launch this runtime first")
+        body, declared, name = fetch_file(client, session, arguments.get("path", ""))
+        mime = sniff(body, declared)
+
+        # An image small enough to inline goes back as MCP image content, which
+        # the client renders in the conversation. Text does the same as text.
+        # Everything else -- too big, or a type with nothing to render -- gets
+        # a link, which is also what "share" asks for outright.
+        if action == "file" and len(body) <= INLINE_LIMIT:
+            # Textual first, and SVG is the reason: it is image/* but an MCP
+            # image block carries raster data, so an SVG returned that way
+            # renders as nothing. As text the client can draw it.
+            if mime.startswith("text/") or mime in TEXTUAL:
+                return {"_content": [{"type": "text",
+                                      "text": body.decode("utf-8", "replace")}]}
+            if mime.startswith("image/"):
+                return {"_content": [{"type": "image", "mimeType": mime,
+                                      "data": base64.b64encode(body).decode()}]}
+
+        url = share(body, mime, name)
+        # Say plainly when this was a fallback rather than what was asked for,
+        # so the model tells the user why they got a link instead of a picture
+        # instead of silently retrying get_file.
+        note = "Give the user this link; it is not a file you can read."
+        if action == "file":
+            note = (f"{name} is {len(body)} bytes, over the {INLINE_LIMIT}-byte "
+                    "limit for displaying a file in the conversation, so it was "
+                    "uploaded instead. " + note)
+        return {"name": name, "bytes": len(body), "mime": mime,
+                "url": url, "expires_in_seconds": SHARE_EXPIRY_SECONDS,
+                "note": note}
 
     return act(client, user, runtime, action,
                arguments.get("code", ""), arguments.get("job", ""))
