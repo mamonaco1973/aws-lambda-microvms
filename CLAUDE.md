@@ -103,7 +103,13 @@ from that one fact.
 - **A presigned URL carries the signer's permissions.** The controller needs
   `s3:GetObject` on the share bucket, not just `s3:PutObject` — otherwise the
   link returns AccessDenied naming the *controller's* role, which reads like a
-  bucket-policy problem and is not one.
+  bucket-policy problem and is not one. It also needs `s3:ListBucket` on the
+  bucket itself (a different resource shape) because `/dl` lists the link's
+  prefix to recover the filename.
+- **`share_file` hands out `/dl/<token>`, not a presigned URL.** The signature
+  is minted when the link is clicked, so it cannot be orphaned by the Lambda's
+  temporary credentials expiring. `/dl` is deliberately unauthenticated — the
+  random token is the credential, the same bearer model a presigned URL uses.
 - **The controller's generic 503 used to swallow the real exception.** It now
   prints a traceback to CloudWatch. Keep that — an AccessDenied and a service
   outage are indistinguishable without it.

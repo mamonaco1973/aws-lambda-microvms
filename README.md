@@ -159,7 +159,11 @@ plot and you see the plot.
 
 Files over 750 KB, and anything with nothing to render, fall back to
 `share_file` behaviour: the controller stages the object in a private bucket
-and returns a presigned URL that expires in an hour. The **MicroVM never
+and returns a short link — `https://…/dl/66d3f96230fb` — that redirects to a
+freshly signed S3 URL on each click. Signing at click time rather than up front
+is what makes the link durable: a URL signed once carries the Lambda's temporary
+credentials and dies with them. Links stop working when the object is reaped,
+within about a day. The **MicroVM never
 touches S3** — the controller already holds credentials, so routing the upload
 through it leaves the guest's execution role as small as it is.
 

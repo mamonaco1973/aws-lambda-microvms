@@ -41,6 +41,9 @@ resource "aws_apigatewayv2_route" "this" {
   for_each = toset([
     "GET /api/config", "GET /api/status", "POST /api/action",
     "POST /mcp",
+    # Public, and a GET a browser follows: the short download links handed out
+    # by share_file. The random segment in the path is the credential.
+    "GET /dl/{token}",
     "GET /.well-known/oauth-authorization-server",
     "POST /oauth/register", "GET /authorize",
     "GET /oauth/callback", "POST /oauth/token",

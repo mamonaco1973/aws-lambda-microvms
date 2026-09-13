@@ -79,15 +79,22 @@ WEB_BUCKET = os.environ["WEB_BUCKET"]
 # routing the upload through here leaves the guest's execution role untouched.
 SHARE_BUCKET = os.environ["SHARE_BUCKET"]
 
+# This API's own base URL, used to build /dl links. Set by Terraform rather than
+# derived from the request, so a link is the same whatever reached the Lambda.
+APP_URL = os.environ["APP_URL"]
+
 # Below this, a file is returned inline in the MCP response and rendered in the
 # conversation. Base64 inflates by a third and the result has to survive the
 # model's context, so this is deliberately well under what the transport would
 # bear. Anything larger becomes a presigned link instead.
 INLINE_LIMIT = 750_000
 
-# How long a download link lives. Long enough to click, short enough that a URL
-# pasted somewhere it should not be stops working the same day.
-SHARE_EXPIRY_SECONDS = 3600
+# Life of the presigned URL the /dl route redirects TO. It only has to outlive
+# the redirect itself, since it is signed fresh on every click -- which is the
+# reason /dl exists rather than handing out a presigned URL directly. Signing
+# once, up front, would bind the link to the Lambda's temporary credentials and
+# it could stop working long before its stated expiry.
+SHARE_EXPIRY_SECONDS = 28800
 
 # Types that are text despite not saying text/*. Worth listing because these
 # are exactly what a cell tends to produce -- a JSON result, an SVG plot.
@@ -438,14 +445,66 @@ def sniff(body, declared):
 
 
 def share(body, mime, name):
-    """Stage a file in S3 and return a presigned URL for it."""
+    """Stage a file in S3 and return a short download link for it.
+
+    Returns a link to this API rather than a presigned S3 URL, for two
+    reasons. The signature is then minted when the link is CLICKED, from
+    whatever credentials are live at that moment -- a URL signed here and now
+    would be signed with the Lambda's temporary credentials and could stop
+    working when those lapse, well before its stated expiry. And the result is
+    a link a person can read, rather than 700 characters of query string.
+
+    Args:
+        body: The file's bytes.
+        mime: Its media type, as decided by sniff().
+        name: The filename to offer the downloader.
+
+    Returns:
+        An absolute https URL to this API's /dl route.
+    """
     s3 = boto3.client("s3", region_name=REGION)
-    stamped = f"{uuid.uuid4().hex[:12]}/{name}"
-    s3.put_object(Bucket=SHARE_BUCKET, Key=stamped, Body=body, ContentType=mime)
-    return s3.generate_presigned_url(
+    token = uuid.uuid4().hex[:12]
+    # The random segment is the whole secret, so the name must not be part of
+    # the id -- it goes in the key beneath it, where it is only ever revealed
+    # to someone who already holds the link.
+    s3.put_object(Bucket=SHARE_BUCKET, Key=f"{token}/{name}", Body=body,
+                  ContentType=mime)
+    return f"{APP_URL}/dl/{token}"
+
+
+def download(token):
+    """Redirect a /dl link to a freshly signed S3 URL.
+
+    Args:
+        token: The random segment from the link.
+
+    Returns:
+        A 302 to a presigned URL, or a 404 when the object is gone -- which is
+        how these links expire: the bucket's lifecycle rule reaps staged files
+        within about a day, and the link stops resolving with them.
+    """
+    s3 = boto3.client("s3", region_name=REGION)
+    listing = s3.list_objects_v2(Bucket=SHARE_BUCKET, Prefix=f"{token}/",
+                                 MaxKeys=1)
+    contents = listing.get("Contents") or []
+    if not contents:
+        return {"statusCode": 404,
+                "headers": {"Content-Type": "text/plain",
+                            "Cache-Control": "no-store"},
+                "body": "This download link has expired."}
+
+    key = contents[0]["Key"]
+    name = key.split("/", 1)[1]
+    url = s3.generate_presigned_url(
         "get_object",
-        Params={"Bucket": SHARE_BUCKET, "Key": stamped},
+        Params={"Bucket": SHARE_BUCKET, "Key": key,
+                # Without this the browser would name the saved file after the
+                # key, random segment and all.
+                "ResponseContentDisposition": f'attachment; filename="{name}"'},
         ExpiresIn=SHARE_EXPIRY_SECONDS)
+    return {"statusCode": 302,
+            "headers": {"Location": url, "Cache-Control": "no-store"},
+            "body": ""}
 
 
 def act(client, user, runtime, action, code, job=None):
@@ -614,6 +673,16 @@ def api(event, context):
         return oauth_token(event)
     if route == "POST /mcp":
         return mcp.handle_mcp(event, run_tool)
+
+    # Public deliberately: a browser following a download link carries no token,
+    # and a viewer cannot be asked to sign in to collect a file. The random
+    # segment is the credential, exactly as it is for a presigned URL -- this is
+    # the same bearer-link model, with a shorter string.
+    if http.get("method") == "GET" and event.get("rawPath", "").startswith("/dl/"):
+        token = event["rawPath"][len("/dl/"):]
+        if not re.fullmatch(r"[0-9a-f]{1,32}", token):
+            return response(400, {"error": "Invalid download link"})
+        return download(token)
 
     user = caller(event)
     if not user:

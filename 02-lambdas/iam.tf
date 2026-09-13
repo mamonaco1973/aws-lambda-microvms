@@ -59,6 +59,14 @@ resource "aws_iam_role_policy" "api" {
         Action   = ["s3:PutObject", "s3:GetObject"]
         Resource = "${aws_s3_bucket.share.arn}/*"
       },
+      # ListBucket is on the BUCKET, not its contents -- a different resource
+      # shape. The /dl redirect lists the link's prefix to recover the original
+      # filename, which is stored as the key beneath the random segment.
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.share.arn
+      },
       # Required, and confirmed the hard way: RunMicrovm with an execution
       # role fails with "no identity-based policy allows the iam:PassRole
       # action" without it. Worth knowing because the least-privilege example
