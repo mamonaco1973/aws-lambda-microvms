@@ -145,6 +145,38 @@ for phase in 03-webapp 02-lambdas 01-microvms; do
 
   echo "NOTE: Destroying ${phase}..."
   terraform -chdir="${phase}" init -input=false
+  if [[ "${phase}" == "02-lambdas" ]]; then
+    # The provider does not expose DeleteFileSystem.forceDelete. This lab's
+    # backing bucket is also destroyed, so preserving pending exports is not
+    # meaningful during teardown. Only touch filesystems owned by this state.
+    FS_IDS=$(terraform -chdir="${phase}" show -json | jq -r       '.values.root_module.resources[]? | select(.type == "aws_s3files_file_system") | .values.id')
+    if [[ -n "${FS_IDS}" ]]; then
+      echo 'NOTE: Removing S3 Files mount targets before deleting the demo filesystem...'
+      terraform -chdir="${phase}" destroy -auto-approve -input=false         -var-file=deployment.tfvars.json -target=aws_s3files_mount_target.storage
+      for fs_id in ${FS_IDS}; do
+        echo "NOTE: Force deleting demo filesystem ${fs_id}; pending exports will be discarded."
+        if ! result=$(aws s3files delete-file-system --file-system-id "${fs_id}" --force-delete 2>&1); then
+          if [[ "${result}" != *ResourceNotFoundException* ]]; then
+            echo "ERROR: ${result}" >&2
+            exit 1
+          fi
+        fi
+        deleted=false
+        for ((attempt=1; attempt<=120; attempt++)); do
+          if result=$(aws s3files get-file-system --file-system-id "${fs_id}" 2>&1); then
+            sleep 5
+          elif [[ "${result}" == *ResourceNotFoundException* ]]; then
+            deleted=true
+            break
+          else
+            echo "ERROR: Cannot verify filesystem deletion: ${result}" >&2
+            exit 1
+          fi
+        done
+        [[ "${deleted}" == true ]] || { echo "ERROR: ${fs_id} is still deleting; retry destroy.sh later."; exit 1; }
+      done
+    fi
+  fi
   terraform -chdir="${phase}" destroy -auto-approve -input=false \
     -var-file=deployment.tfvars.json
 done

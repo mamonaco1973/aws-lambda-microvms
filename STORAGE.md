@@ -130,7 +130,10 @@ continues billing while MicroVMs are suspended. Tear the lab down after testing:
 
 The script terminates MicroVMs before Terraform removes the connector and
 filesystem. The dedicated demo bucket uses `force_destroy`; teardown deletes
-its objects and versions too. Download anything you want to keep first.
+its objects and versions too. Teardown removes mount targets and force-deletes
+the filesystem through the AWS CLI because the Terraform provider does not
+expose `forceDelete`. Pending exports are discarded. Terraform then refreshes
+its state and finishes resource cleanup. Download anything you want to keep first.
 
 ## Troubleshooting
 
