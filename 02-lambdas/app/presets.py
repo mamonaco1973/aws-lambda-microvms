@@ -95,12 +95,12 @@ aws sts get-caller-identity --region __REGION__
 echo '--- read the bucket this page was served from'
 aws s3 ls "s3://__WEB_BUCKET__" --region __REGION__""",
 
-        "storage_mount": "/app/storage.sh mount &&\nls -al /mnt/shared &&\ndf -H",
+        "storage_mount": "/app/storage.sh check &&\nls -al /mnt/shared &&\ndf -H",
         "storage_write": """if mountpoint -q /mnt/shared; then
   echo "Hello World" > /mnt/shared/hello.txt &&
   ls -al /mnt/shared/hello.txt
 else
-  echo 'Run Mount S3 Files first.' >&2
+  echo 'Shared storage is not ready. Run Check S3 Files Mount.' >&2
   false
 fi""",
         "storage_read": "cat /mnt/shared/hello.txt",

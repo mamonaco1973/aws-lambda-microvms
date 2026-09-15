@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# validate.sh — Suspend/Resume validation
+# validate.sh â€” Suspend/Resume validation
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Launch a MicroVM from the bash image.
@@ -209,7 +209,15 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
     --query 'authToken."X-aws-proxy-auth"' --output text)
 
   # ---- Mount and write through NFS, never through an S3 upload ---------------
-  for CODE in '/app/storage.sh mount' "/app/storage.sh write validation-${VM_ID}.txt"; do
+  echo 'NOTE: Waiting for the automatic background mount...'
+  for ((attempt=1; attempt<=120; attempt++)); do
+    STORAGE_STATE=$(vm_request GET /state | jq -r '.storage.state')
+    [[ "${STORAGE_STATE}" == ready ]] && break
+    [[ "${STORAGE_STATE}" == error ]] && { echo 'ERROR: Automatic mount failed; inspect the guest mount log.'; exit 1; }
+    sleep 1
+  done
+  [[ "${STORAGE_STATE}" == ready ]] || { echo 'ERROR: Automatic mount timed out.'; exit 1; }
+  for CODE in '/app/storage.sh check' "/app/storage.sh write validation-${VM_ID}.txt"; do
     RESULT=$(run_cell "${CODE}")
     echo "${RESULT}" | jq -r .stdout
     echo "${RESULT}" | jq -e '.ok == true' >/dev/null || { echo 'ERROR: NFS mount/write failed.'; exit 1; }
@@ -311,7 +319,7 @@ echo "NOTE: Controller API rejects requests with no access token (401)."
 # ------------------------------------------------------------------------------
 echo ""
 echo "================================================================================="
-echo "  Lambda MicroVMs — Deployment validated!"
+echo "  Lambda MicroVMs â€” Deployment validated!"
 echo "================================================================================="
 echo "  App        : ${APP_URL}"
 echo "  API        : ${API_BASE}"

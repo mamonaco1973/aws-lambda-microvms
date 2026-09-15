@@ -55,8 +55,8 @@ path unambiguous: the write is through NFS, not an SDK upload.
 1. Open the application URL printed by apply/validate. Terminate any old browser
    session and launch a fresh one: existing VMs do not acquire the new image or
    VPC connector automatically.
-2. Select **Mount S3 Files**, then **Run cell**. The output identifies the NFS
-   mount. Mounting is explicit to make errors visible; it is not hidden in a hook.
+2. Select **Check S3 Files Mount**, then **Run cell**. The output identifies the NFS
+   mount. The mount starts automatically after launch. This preset only checks it, lists the directory, and runs `df -H`.
 3. Select **Write shared file**, then **Run cell**. This writes
    `Hello World` directly to `/mnt/shared/hello.txt` and lists the file.
    A mount check prevents an accidental local-disk write. No storage wrapper
@@ -90,6 +90,13 @@ Do not delete the filesystem while waiting for an object you want to retain.
 The controller passes the filesystem ID, mount-target IP, and region through
 `runHookPayload`. The `/run` hook writes this non-secret configuration after
 image restore. No active NFS mount or guest credentials are baked into the image.
+
+The `/run` hook starts a background mount and returns immediately. Storage
+reports connecting, ready, or error through `/state`. The `/resume` hook starts
+a bounded check of the existing mount, not another mount. Dashboard status is
+last-observed data: regular refresh does not wake suspended VMs. Run Check S3
+Files Mount to sample it again. A mount error leaves the shell usable; inspect
+the mount log, correct the cause, and launch a fresh session to retry.
 
 `storage.sh` uses `mount.s3files` with TLS and IAM authentication. An explicit
 mount-target IP avoids depending on EC2 availability-zone discovery. The

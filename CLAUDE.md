@@ -173,8 +173,8 @@ access. No AD/Samba/EC2 gateway. The guest execution role can mount/write this
 shared filesystem; it still cannot upload directly to the backing S3 bucket.
 
 `/app/storage.sh` is a separate Bash process, so strict error handling there does
-not change the persistent worker. Never remove its real-NFS-mount guard. Mount
-explicitly after launch; do not capture a live mount or credentials in the image.
+not change the persistent worker. Never remove its real-NFS-mount guard. Mount automatically in a background thread after launch; do not capture a live
+mount or credentials in the image.
 The non-systemd guest starts the efs-utils watchdog explicitly after mounting.
 Validation compares NFS writes to actual S3 object contents before/after resume.
 S3 exports are asynchronous; `sync` does not force immediate object visibility.

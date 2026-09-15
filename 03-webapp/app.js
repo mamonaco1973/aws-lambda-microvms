@@ -22,7 +22,7 @@ const PRESET_LABELS = {
   gateway: 'Outlast a 30s gateway',
   git: 'Install GIT',
   awscli: 'Install AWS CLI',
-  storage_mount: 'Mount S3 Files',
+  storage_mount: 'Check S3 Files Mount',
   storage_write: 'Write shared file',
   storage_read: 'Read shared file',
   failure: 'Raise an error',
@@ -257,6 +257,7 @@ function buildPanel(runtime) {
       <button data-action="wake">Wake via HTTPS</button>
       <button data-action="terminate">Terminate</button>
     </div>
+    <p class="storage-status" aria-live="polite">Shared storage: not launched</p>
     <div class="stats">
       <div class="stat"><small>Launch to response</small><strong data-stat="launch">-</strong></div>
       <div class="stat"><small>Last round trip</small><strong data-stat="rtt">-</strong></div>
@@ -339,6 +340,11 @@ function render(runtime, data, sampled = false) {
   panel.querySelector('.status').textContent = data.state;
   panel.querySelector('.status').className = `status ${data.state}`;
   renderComparison(panel, runtime, data);
+  const storage = snapshot?.storage;
+  panel.querySelector('.storage-status').textContent = data.state === 'TERMINATED'
+    ? 'Shared storage: session terminated'
+    : storage ? `${storage.message || storage.state} (last observed; use Check S3 Files Mount to refresh)`
+    : 'Shared storage: launch a new VM to enable automatic mounting';
 
   if (snapshot) {
     panel.querySelector('[data-stat="launch"]').textContent =

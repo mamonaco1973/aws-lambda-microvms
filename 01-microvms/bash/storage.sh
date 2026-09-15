@@ -37,8 +37,13 @@ case "${1:-}" in
     fi
     findmnt -rn -M "$MOUNT" -o TARGET,FSTYPE,SOURCE
     ;;
+  check)
+    mounted || { echo "ERROR: Shared storage is not mounted yet; initialization may still be running. Inspect /var/log/amazon/efs/mount.log if this persists." >&2; exit 1; }
+    timeout 30 stat "$MOUNT" >/dev/null
+    findmnt -rn -M "$MOUNT" -o TARGET,FSTYPE,SOURCE
+    ;;
   write)
-    mounted || { echo 'ERROR: Run Mount S3 Files first; refusing to write to local disk.' >&2; exit 1; }
+    mounted || { echo 'ERROR: Shared storage is not ready; refusing to write to local disk.' >&2; exit 1; }
     NAME="${2:-demo.txt}"
     [[ "$NAME" =~ ^[a-zA-Z0-9_-]+\.txt$ ]] || { echo 'ERROR: Use a simple .txt filename.' >&2; exit 1; }
     mkdir -p "$MOUNT/microvm-demo"
@@ -55,5 +60,5 @@ case "${1:-}" in
     [[ "$NAME" =~ ^[a-zA-Z0-9_-]+\.txt$ ]] || { echo 'ERROR: Use a simple .txt filename.' >&2; exit 1; }
     cat "$MOUNT/microvm-demo/$NAME"
     ;;
-  *) echo 'Usage: storage.sh mount | write [name.txt] | read [name.txt]' >&2; exit 2 ;;
+  *) echo 'Usage: storage.sh mount | check | write [name.txt] | read [name.txt]' >&2; exit 2 ;;
 esac

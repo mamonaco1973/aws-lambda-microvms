@@ -107,6 +107,8 @@ class Lab:
         # session was resumed rather than freshly launched.
         self.session_nonce = None
 
+        self.storage = {"state": "disabled"}
+        self.storage_lock = threading.Lock()
         self.runtime = "image-build"
         self.microvm_id = None
         self.ticks = 0
@@ -156,8 +158,28 @@ class Lab:
                 "session_nonce": self.session_nonce, "image_marker": self.image_marker,
                 "server_pid": os.getpid(), "worker_pid": self.worker.pid, "ticks": self.ticks,
                 "initialization": self.initialization, "events": list(self.events),
+                "storage": dict(self.storage),
                 "file": note.read_text(encoding="utf-8")[:2000] if note.is_file() else None,
                 "worker_alive": self.worker.poll() is None and not self.dead}
+
+    def start_storage(self, operation):
+        """Mount/check off the hook thread. Never snapshot an active mount."""
+        with self.storage_lock:
+            if self.storage.get("state") == "connecting":
+                return
+            self.storage = {"state": "connecting", "message": "Shared storage connecting..."}
+        def work():
+            try:
+                result = subprocess.run(["/app/storage.sh", operation],
+                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL, timeout=100, check=False)
+                state = "ready" if result.returncode == 0 else "error"
+                message = "Shared storage ready" if state == "ready" else "Shared storage unavailable; check /var/log/amazon/efs/mount.log"
+            except (OSError, subprocess.TimeoutExpired):
+                state, message = "error", "Shared storage check failed or timed out"
+            with self.storage_lock:
+                self.storage = {"state": state, "message": message}
+        threading.Thread(target=work, daemon=True).start()
 
     def hook(self, name, data):
         """Handle one AWS lifecycle hook.
@@ -192,6 +214,10 @@ class Lab:
                         json.dump(storage, out)
                 self.microvm_id = data.get("microvmId")
                 self.session_nonce = str(uuid.uuid4())
+                if config.get("storage"):
+                    self.start_storage("mount")
+        if name == "resume" and self.storage.get("state") != "disabled":
+            self.start_storage("check")
         self.events.append({"hook": name, "wall_time": time.time(), "ticks": self.ticks})
         return {"ok": True}
 
