@@ -7,7 +7,7 @@ NFS; you verify the exported object in the backing S3 bucket.
 ```mermaid
 flowchart LR
     Browser[Browser or Claude] --> API[Existing controller]
-    API --> VM[MicroVM /nfs/shared]
+    API --> VM[MicroVM /mnt/shared]
     VM --> Connector[VPC egress connector]
     Connector --> NFS[S3 Files mount target]
     NFS --> FS[S3 Files filesystem]
@@ -36,7 +36,7 @@ mechanism used for the MicroVM image. There is no CloudFormation stack.
 
 `validate.sh`, called by apply, launches its own short-lived VM and checks:
 
-1. Mounting succeeds and `/nfs/shared` is an NFS mount, not just a directory.
+1. Mounting succeeds and `/mnt/shared` is an NFS mount, not just a directory.
 2. A file can be written through that mount.
 3. Interpreter state survives explicit suspension and request-triggered resume.
 4. The existing mounted file can be read and a second file written after resume.
@@ -58,11 +58,11 @@ path unambiguous: the write is through NFS, not an SDK upload.
 2. Select **Mount S3 Files**, then **Run cell**. The output identifies the NFS
    mount. Mounting is explicit to make errors visible; it is not hidden in a hook.
 3. Select **Write shared file**, then **Run cell**. This writes
-   `/nfs/shared/microvm-demo/demo.txt`, prints its contents and SHA-256, and shows
-   the destination S3 key.
+   `Hello World` directly to `/mnt/shared/hello.txt` and lists the file.
+   A mount check prevents an accidental local-disk write. No storage wrapper
+   is called by the write or read preset.
 4. Open the bucket link printed by validation. Refresh until
-   `microvm-demo/demo.txt` appears, then download/open it. Its contents include
-   the originating MicroVM ID.
+   `hello.txt` appears, then download/open it. Its contents are `Hello World`.
 5. Suspend the VM, wait for SUSPENDED, then run **Read shared file**. Run
    **Write shared file** again to demonstrate post-resume writes as well.
 
@@ -77,8 +77,8 @@ Independent CLI verification (no upload):
 
 ```bash
 bucket=$(terraform -chdir=02-lambdas output -json storage | jq -r .bucket)
-aws s3 ls "s3://${bucket}/microvm-demo/"
-aws s3 cp "s3://${bucket}/microvm-demo/demo.txt" -
+aws s3 ls "s3://${bucket}/"
+aws s3 cp "s3://${bucket}/hello.txt" -
 ```
 
 S3 Files batches exports for approximately 60 seconds; synchronization can take

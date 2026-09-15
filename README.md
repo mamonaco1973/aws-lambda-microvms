@@ -49,7 +49,7 @@ Key capabilities demonstrated:
 ## S3 Files: write through NFS, verify in S3
 
 The demo now includes a dedicated Amazon S3 Files filesystem mounted at
-`/nfs/shared`. Use **Mount S3 Files**, **Write shared file**, and **Read shared
+`/mnt/shared`. Use **Mount S3 Files**, **Write shared file**, and **Read shared
 file** in the existing console. The file is exported asynchronously to a
 versioned S3 bucket; validation checks the actual object contents before and
 after a MicroVM suspend/resume.
