@@ -132,9 +132,12 @@ from that one fact.
 | Lambda `timeout` | 30s | Nothing waits for a cell |
 | `IDLE_SUSPEND_SECONDS` | 1800 | Well above the ~10 min/GB suspend/resume breakeven |
 | `MAX_LIFETIME_SECONDS` | 28800 | Service maximum. Cost is bounded by auto-suspend, not by this |
+| `SUSPENDED_TTL_SECONDS` | 28800 | Deliberately equal to the lifetime: a suspended VM stays resumable for as long as it is allowed to exist |
 
-`SUSPENDED_TTL_SECONDS` must stay below `MAX_LIFETIME_SECONDS` or idle suspend
-can never fire.
+Setting the suspended TTL equal to the lifetime means nothing reaps a suspended
+VM early — the lifetime cap is what ends it, and that cap counts suspended time.
+A shorter TTL would be a second, earlier deadline, which is not what this demo
+wants: the point is that a session you come back to is still there.
 
 ## Cost
 

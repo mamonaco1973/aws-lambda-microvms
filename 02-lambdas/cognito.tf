@@ -70,6 +70,11 @@ resource "aws_cognito_user_pool_client" "spa" {
 
   generate_secret = false
 
+  # The SPA renews silently with the refresh_token grant rather than bouncing
+  # through the hosted UI, whose session cookie is fixed at 60 minutes and
+  # cannot be extended. Without this flow that grant is refused.
+  explicit_auth_flows = ["ALLOW_REFRESH_TOKEN_AUTH"]
+
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
@@ -77,6 +82,21 @@ resource "aws_cognito_user_pool_client" "spa" {
 
   callback_urls = ["${local.spa_origin}/callback.html"]
   logout_urls   = ["${local.spa_origin}/index.html"]
+
+  # Match the MicroVM's own ceiling. Cognito defaults to one hour, which
+  # signed the console out mid-session while the sandbox it was driving was
+  # still alive -- and the SPA stores a refresh token it never uses, so the
+  # expiry is a hard stop rather than a silent renewal. Eight hours is not
+  # arbitrary: a login that outlives the VM it manages buys nothing, and one
+  # that expires first strands a running session.
+  access_token_validity  = 8
+  id_token_validity      = 8
+  refresh_token_validity = 30
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
 }
 
 # ------------------------------------------------------------------------------

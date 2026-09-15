@@ -332,10 +332,12 @@ reverse order. Keep the local Terraform state until it succeeds.
 ## Cost Controls
 
 Each MicroVM uses the **0.5 GB / 0.25 vCPU baseline** (bursting to 2 GB / 1 vCPU),
-auto-suspends after 30 minutes idle, terminates after 30 minutes suspended, and
-has an **8-hour maximum lifetime** — the service ceiling. Idle suspension and the lifetime limit both bound resource use. An idle VM stops costing compute after 30
-minutes and is gone 30 minutes later, so the full 8 hours is only reached by a
-session someone is still using. The application intends one session per user/runtime; lookup and creation are
+auto-suspends after 30 minutes idle, and has an **8-hour maximum lifetime** —
+the service ceiling. Suspended retention is set to that same 8 hours, so a
+suspended VM is not reaped early: it is the lifetime cap that ends it. Idle
+suspension is therefore the cost control and the lifetime limit is the backstop.
+An idle VM stops costing compute after 30 minutes but remains resumable for the
+rest of its 8 hours, and that clock includes the time it spends suspended. The application intends one session per user/runtime; lookup and creation are
 not an atomic quota mechanism. Request throttling and reserved Lambda concurrency
 limit throughput, not the total number of live MicroVMs or total spending.
 

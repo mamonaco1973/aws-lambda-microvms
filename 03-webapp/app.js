@@ -121,9 +121,69 @@ function signOut() {
 }
 
 // -----------------------------------------------------------------------------
+// Silent renewal — the refresh_token grant against Cognito
+// -----------------------------------------------------------------------------
+// Bouncing an expired session back to the hosted UI looks like being signed
+// out, and past the hosted UI's own 60-minute cookie it IS: Cognito asks for
+// the password again. That cookie is not configurable, so the only way to
+// keep a long session is never to send the browser there -- renew with the
+// refresh token instead, which does not involve the hosted UI at all.
+//
+// Cognito does NOT return a new refresh_token from this grant. Storing the
+// response wholesale would overwrite the one we have with undefined and make
+// the next renewal fail.
+// -----------------------------------------------------------------------------
+function tokenExpired(token) {
+  if (!token) return true;
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const { exp } = JSON.parse(atob(part));
+    // 30s of slack: a token that expires mid-flight reads as a 401.
+    return !exp || Date.now() / 1000 >= exp - 30;
+  } catch {
+    return true;
+  }
+}
+
+async function renew() {
+  const refreshToken = sessionStorage.getItem('refresh_token');
+  if (!refreshToken) return false;
+  try {
+    const response = await fetch(`https://${settings.cognitoDomain}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: settings.clientId,
+        refresh_token: refreshToken,
+      }).toString(),
+    });
+    if (!response.ok) return false;
+    const tokens = await response.json();
+    if (!tokens.access_token) return false;
+    sessionStorage.setItem('access_token', tokens.access_token);
+    if (tokens.id_token) sessionStorage.setItem('id_token', tokens.id_token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // API access — the Cognito access token on every call.
 // -----------------------------------------------------------------------------
-async function api(path, options = {}) {
+async function api(path, options = {}, retried = false) {
+  // Renew before sending rather than after being refused: the status poller
+  // runs every five seconds, so an expired token would otherwise produce a
+  // burst of 401s before anything noticed.
+  if (tokenExpired(sessionStorage.getItem('access_token'))) {
+    if (!(await renew())) {
+      sessionStorage.removeItem('access_token');
+      signIn();
+      return {};
+    }
+  }
+
   const response = await fetch(settings.apiBaseUrl + path, {
     ...options,
     headers: {
@@ -133,10 +193,12 @@ async function api(path, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    // Expired or missing token: back to the hosted UI rather than retrying
-    // with a credential the API has already refused.
+    // One renewal and one retry. If the refresh token is gone or rejected
+    // the session really is over, and the hosted UI is the only way back.
+    if (!retried && await renew()) return api(path, options, true);
     sessionStorage.removeItem('access_token');
     signIn();
+    return {};
   }
   if (!response.ok) throw Error(data.error || `HTTP ${response.status}`);
   return data;
