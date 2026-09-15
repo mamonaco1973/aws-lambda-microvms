@@ -95,7 +95,7 @@ aws sts get-caller-identity --region __REGION__
 echo '--- read the bucket this page was served from'
 aws s3 ls "s3://__WEB_BUCKET__" --region __REGION__""",
 
-        "storage_mount": "/app/storage.sh mount",
+        "storage_mount": "/app/storage.sh mount &&\nls -al /nfs/shared",
         "storage_write": "/app/storage.sh write",
         "storage_read": "/app/storage.sh read",
 

@@ -2,7 +2,7 @@
 # Run in its own process: failure must never exit the persistent session shell.
 set -euo pipefail
 CONFIG=${STORAGE_CONFIG_FILE:-/app/storage.json}
-MOUNT=${STORAGE_MOUNT:-/mnt/shared}
+MOUNT=${STORAGE_MOUNT:-/nfs/shared}
 [[ -f "$CONFIG" ]] || { echo 'ERROR: Storage is not configured. Launch a new VM after deploying.' >&2; exit 1; }
 FS_ID=$(jq -er .file_system_id "$CONFIG")
 TARGET=$(jq -er .mount_target_ip "$CONFIG")
@@ -28,7 +28,7 @@ case "${1:-}" in
         exit 1
       fi
     fi
-    mounted || { echo 'ERROR: /mnt/shared is not an NFS mount.' >&2; exit 1; }
+    mounted || { echo 'ERROR: /nfs/shared is not an NFS mount.' >&2; exit 1; }
     # The guest supervisor is PID 1, not systemd. Run the utility's watchdog
     # explicitly so IAM certificates can refresh during a long session.
     if [[ ! -f /run/s3files-watchdog.pid ]] || ! kill -0 "$(cat /run/s3files-watchdog.pid)" 2>/dev/null; then
@@ -50,7 +50,7 @@ case "${1:-}" in
     echo 'NOTE: S3 Files exports asynchronously; allow about a minute, sometimes longer.'
     ;;
   read)
-    mounted || { echo 'ERROR: /mnt/shared is not an NFS mount.' >&2; exit 1; }
+    mounted || { echo 'ERROR: /nfs/shared is not an NFS mount.' >&2; exit 1; }
     NAME="${2:-demo.txt}"
     [[ "$NAME" =~ ^[a-zA-Z0-9_-]+\.txt$ ]] || { echo 'ERROR: Use a simple .txt filename.' >&2; exit 1; }
     cat "$MOUNT/microvm-demo/$NAME"
