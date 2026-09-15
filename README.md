@@ -46,6 +46,19 @@ Key capabilities demonstrated:
 5. **Infrastructure as Code (IaC)** – Terraform provisions the Bash image, Cognito,
    API Gateway, Lambda, DynamoDB and S3 web hosting.
 
+## S3 Files: write through NFS, verify in S3
+
+The demo now includes a dedicated Amazon S3 Files filesystem mounted at
+`/mnt/shared`. Use **Mount S3 Files**, **Write shared file**, and **Read shared
+file** in the existing console. The file is exported asynchronously to a
+versioned S3 bucket; validation checks the actual object contents before and
+after a MicroVM suspend/resume.
+
+See [STORAGE.md](STORAGE.md) for deployment, the exact recording sequence,
+architecture, costs, and troubleshooting. The new VPC path includes one NAT
+gateway to preserve internet access; destroy the lab after testing to stop its
+hourly charges. No AD, Samba, or EC2 gateway is deployed.
+
 ## MicroVM Concepts, in EC2 Terms
 
 The application's main panel is a configuration table that reports how each
@@ -61,7 +74,7 @@ Several rows have **no EC2 equivalent at all**:
 | Boot payload | `runHookPayload` (16 KB) | User data (16 KB) |
 | Init | `/run` lifecycle hook | cloud-init |
 | Inbound | Network connectors | Security group rules |
-| Credentials | Guest execution role: read access to the demo web bucket | IAM instance profile |
+| Credentials | Guest execution role: web-bucket reads and S3 Files access | IAM instance profile |
 | Access | Per-VM HTTPS endpoint + scoped token | Public IP + SSH keypair |
 | Idle behaviour | Auto-suspend, auto-resume on traffic | *no equivalent* |
 | Lifetime | Hard ceiling, 8 hours maximum | *no equivalent — instances run forever* |

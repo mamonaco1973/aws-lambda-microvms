@@ -66,13 +66,14 @@ BASE_IMAGE_VERSION = os.environ["BASE_IMAGE_VERSION"]
 
 # Passed to RunMicrovm, which is the MicroVM equivalent of an EC2 instance
 # profile: the guest authenticates as this role with no key material inside it.
-# Scoped to reading the web bucket only, because submitted code runs through
-# eval -- whatever this role can do, anything typed into the editor can do.
+# Guest code can read the web bucket and mount/write the shared S3 Files
+# filesystem. Whatever this role can do, submitted code can do.
 MICROVM_ROLE_ARN = os.environ["MICROVM_ROLE_ARN"]
 
 # Substituted into the AWS CLI preset so the cell can name a real bucket
 # without the browser having to assemble the command.
 WEB_BUCKET = os.environ["WEB_BUCKET"]
+STORAGE = json.loads(os.environ.get("STORAGE_CONFIG", "{}"))
 
 # Where files too large to inline are staged for download. Written by THIS
 # function, never by the MicroVM: the controller already holds credentials, so
@@ -232,9 +233,10 @@ def spec(runtime):
         "baseline_vcpu": BASELINE_MIB / 2048,          # 2 GB == 1 vCPU
         "burst_mib": BASELINE_MIB * 4,                 # vertical scale ceiling
         "disk_gb": 8,
-        "execution_role": MICROVM_ROLE_ARN,            # read-only on the web bucket
+        "execution_role": MICROVM_ROLE_ARN,            # web reads and shared filesystem access
         "ingress_connector": "ALL_INGRESS",
-        "egress_connector": "INTERNET_EGRESS",
+        "egress_connector": STORAGE.get("connector_arn", "INTERNET_EGRESS"),
+        "shared_storage": STORAGE.get("file_system_id", "disabled"),
         "shell_enabled": False,                        # no SHELL_INGRESS attached
         "app_port": APP_PORT,
         "hook_port": HOOK_PORT,
@@ -242,7 +244,7 @@ def spec(runtime):
         "idle_suspend_seconds": IDLE_SUSPEND_SECONDS,
         "suspended_ttl_seconds": SUSPENDED_TTL_SECONDS,
         "max_lifetime_seconds": MAX_LIFETIME_SECONDS,
-        "run_hook_payload": {"runtime": runtime},
+        "run_hook_payload": {"runtime": runtime, "storage": STORAGE},
     }
 
 
@@ -354,7 +356,9 @@ def launch(client, user, runtime):
         clientToken=str(uuid.uuid4()),
         # Reaches the /run hook, which generates this session's nonce. Identity
         # must be created after the snapshot, never baked into it.
-        runHookPayload=json.dumps({"runtime": runtime}),
+        runHookPayload=json.dumps({"runtime": runtime, "storage": STORAGE}),
+        egressNetworkConnectors=[STORAGE["connector_arn"]] if STORAGE else [
+            f"arn:aws:lambda:{REGION}:aws:network-connector:aws-network-connector:INTERNET_EGRESS"],
         executionRoleArn=MICROVM_ROLE_ARN,
         ingressNetworkConnectors=[
             f"arn:aws:lambda:{REGION}:aws:network-connector:aws-network-connector:ALL_INGRESS"],

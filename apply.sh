@@ -56,7 +56,7 @@ done
 echo "NOTE: Packaging the MicroVM applications..."
 
 rm -rf dist && mkdir -p dist
-(cd 01-microvms/bash && zip -q -X -r ../../dist/bash-app.zip Dockerfile server.py worker.sh)
+(cd 01-microvms/bash && zip -q -X -r ../../dist/bash-app.zip Dockerfile server.py worker.sh storage.sh)
 
 # ------------------------------------------------------------------------------
 # PACKAGE THE CONTROLLER LAMBDA
@@ -129,6 +129,7 @@ jq -n --arg region "${AWS_DEFAULT_REGION}" --arg version "${BASE_IMAGE_VERSION}"
   > 01-microvms/deployment.tfvars.json
 
 terraform -chdir=01-microvms init -input=false
+terraform -chdir=01-microvms validate -no-color
 terraform -chdir=01-microvms apply -auto-approve -input=false \
   -var-file=deployment.tfvars.json
 
@@ -146,6 +147,7 @@ jq -n --arg region "${AWS_DEFAULT_REGION}" --arg base "${BASE_IMAGE_VERSION}" \
   > 02-lambdas/deployment.tfvars.json
 
 terraform -chdir=02-lambdas init -input=false
+terraform -chdir=02-lambdas validate -no-color
 terraform -chdir=02-lambdas apply -auto-approve -input=false \
   -var-file=deployment.tfvars.json
 
@@ -167,6 +169,7 @@ jq -n --arg region "${AWS_DEFAULT_REGION}" --arg bucket "${WEB_BUCKET}" \
   > 03-webapp/deployment.tfvars.json
 
 terraform -chdir=03-webapp init -input=false
+terraform -chdir=03-webapp validate -no-color
 terraform -chdir=03-webapp apply -auto-approve -input=false \
   -var-file=deployment.tfvars.json
 

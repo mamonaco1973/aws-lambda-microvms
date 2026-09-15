@@ -31,6 +31,11 @@ if [ -z "${IMAGES}" ] || [ -z "${APP_URL}" ] || [ -z "${API_BASE}" ]; then
   exit 1
 fi
 
+STORAGE=$(terraform -chdir=02-lambdas output -json storage)
+STORAGE_URL=$(terraform -chdir=02-lambdas output -raw storage_console_url)
+echo "NOTE: Application: ${APP_URL}"
+echo "NOTE: S3 Files bucket: ${STORAGE_URL}"
+
 # The seed/resume pair is written to print exactly this.
 EXPECTED="42 1 validated"
 
@@ -181,7 +186,9 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
 
   RUN=$(aws lambda-microvms run-microvm \
     --image-identifier "${IMAGE_ARN}" \
-    --run-hook-payload "{\"runtime\":\"${RUNTIME}\"}" \
+    --run-hook-payload "$(jq -nc --arg r "${RUNTIME}" --argjson s "${STORAGE}" '{runtime:$r,storage:$s}')" \
+    --execution-role-arn "$(echo "${STORAGE}" | jq -r .execution_role_arn)" \
+    --egress-network-connectors "$(echo "${STORAGE}" | jq -r .connector_arn)" \
     --ingress-network-connectors "arn:aws:lambda:${AWS_DEFAULT_REGION}:aws:network-connector:aws-network-connector:ALL_INGRESS" \
     --idle-policy '{"autoResumeEnabled":true,"maxIdleDurationSeconds":60,"suspendedDurationSeconds":900}' \
     --maximum-duration-in-seconds 1800)
@@ -200,6 +207,13 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
     --expiration-in-minutes 30 \
     --allowed-ports '[{"port":8080}]' \
     --query 'authToken."X-aws-proxy-auth"' --output text)
+
+  # ---- Mount and write through NFS, never through an S3 upload ---------------
+  for CODE in '/app/storage.sh mount' "/app/storage.sh write validation-${VM_ID}.txt"; do
+    RESULT=$(run_cell "${CODE}")
+    echo "${RESULT}" | jq -r .stdout
+    echo "${RESULT}" | jq -e '.ok == true' >/dev/null || { echo 'ERROR: NFS mount/write failed.'; exit 1; }
+  done
 
   # ---- Seed live interpreter state ------------------------------------------
   echo "NOTE: Seeding interpreter state..."
@@ -244,6 +258,31 @@ for RUNTIME in $(echo "${IMAGES}" | jq -r 'keys[]'); do
   fi
   echo "NOTE: Session nonce unchanged; the same interpreter, not a restart."
 
+  # Read the original file after resume and make a second write. Both must
+  # independently appear in S3. Local sync/fsync does not force an S3 export.
+  RESULT=$(run_cell "timeout 45 /app/storage.sh read validation-${VM_ID}.txt && timeout 45 /app/storage.sh write resumed-${VM_ID}.txt")
+  echo "${RESULT}" | jq -r .stdout
+  echo "${RESULT}" | jq -e '.ok == true' >/dev/null || { echo 'ERROR: NFS access failed after resume.'; exit 1; }
+  BUCKET=$(echo "${STORAGE}" | jq -r .bucket)
+  mkdir -p test-results
+  for KEY in "microvm-demo/validation-${VM_ID}.txt" "microvm-demo/resumed-${VM_ID}.txt"; do
+    echo "NOTE: Waiting for S3 Files to export ${KEY} (up to five minutes)..."
+    FOUND=false
+    for ((attempt=1; attempt<=60; attempt++)); do
+      if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
+        aws s3api get-object --bucket "${BUCKET}" --key "${KEY}" test-results/shared-file.txt >/dev/null
+        if [[ "$(cat test-results/shared-file.txt)" != "Written through NFS from MicroVM ${VM_ID}" ]]; then
+          echo 'ERROR: S3 object contents differ from the NFS write.'; exit 1
+        fi
+        FOUND=true
+        echo "NOTE: Verified NFS -> S3 contents: ${KEY}"
+        break
+      fi
+      sleep 5
+    done
+    [[ "${FOUND}" == true ]] || { echo 'ERROR: S3 export timed out. Check S3 Files PendingExports/ExportFailures and its service role.'; exit 1; }
+  done
+
   # ---- The endpoint refuses an unauthenticated request ------------------------
   STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://${ENDPOINT}/state")
   if [[ "${STATUS}" != "403" ]]; then
@@ -277,6 +316,7 @@ echo "==========================================================================
 echo "  App        : ${APP_URL}"
 echo "  API        : ${API_BASE}"
 echo "  MCP        : ${MCP_URL}"
+echo "  S3 Files   : ${STORAGE_URL}"
 echo
 echo "Open the app and choose Sign up -- Cognito verifies the address by email."
 echo "User pool : ${USER_POOL_ID}"

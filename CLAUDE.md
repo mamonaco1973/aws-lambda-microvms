@@ -163,3 +163,23 @@ came from had no tool that took arguments at all.
 See the workspace-root `.claude/CLAUDE.md`: comment the *why*, not the *what*;
 `# ===` section headers; comment lines ≤ 80 characters; Python non-trivial
 functions get Google-style docstrings.
+
+
+## S3 Files extension
+
+`STORAGE.md` describes the shared NFS test. Phase 2 now creates a dedicated VPC,
+S3 Files filesystem/bucket, VPC egress connector, and one NAT gateway for internet
+access. No AD/Samba/EC2 gateway. The guest execution role can mount/write this
+shared filesystem; it still cannot upload directly to the backing S3 bucket.
+
+`/app/storage.sh` is a separate Bash process, so strict error handling there does
+not change the persistent worker. Never remove its real-NFS-mount guard. Mount
+explicitly after launch; do not capture a live mount or credentials in the image.
+The non-systemd guest starts the efs-utils watchdog explicitly after mounting.
+Validation compares NFS writes to actual S3 object contents before/after resume.
+S3 exports are asynchronous; `sync` does not force immediate object visibility.
+
+NAT has an hourly cost even with all sessions suspended. S3 Files also charges
+for its storage and operations. The earlier MicroVM-only cost paragraph is not
+a total deployment estimate. Destroy terminates sessions before deleting their
+connector; it also deletes the dedicated backing bucket and all versions.

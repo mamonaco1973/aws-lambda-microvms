@@ -31,7 +31,7 @@ resource "aws_cloudcontrolapi_resource" "image" {
     Resources = [{ MinimumMemoryInMiB = 512 }]
 
     # Required by the schema, and both must stay present even when empty.
-    AdditionalOsCapabilities = []
+    AdditionalOsCapabilities = ["ALL"]
     EnvironmentVariables     = []
 
     # Internet egress so submitted code can behave like a real session: it is

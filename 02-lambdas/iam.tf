@@ -88,6 +88,7 @@ resource "aws_iam_role_policy" "api" {
         Resource = [
           "arn:aws:lambda:${var.region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS",
           "arn:aws:lambda:${var.region}:aws:network-connector:aws-network-connector:ALL_INGRESS",
+          local.storage.connector_arn,
         ]
       },
     ]
@@ -101,14 +102,9 @@ resource "aws_iam_role_policy" "api" {
 # and the AWS CLI inside the guest authenticates as it with no key material
 # stored anywhere in the VM.
 #
-# Deliberately almost powerless. Submitted code runs through eval in the
-# session shell, so this role's permissions ARE the permissions of any signed-in
-# user. Reading the objects the SPA already serves to the internet anonymously
-# adds no exposure, which is exactly why that bucket was chosen as the target.
-#
-# Now that every session belongs to a named Cognito user rather than to whoever
-# knew a shared passphrase, widening this role is defensible -- but it is still
-# a decision to make deliberately, not a default to drift into.
+# Guest code can read the web bucket and mount/write the dedicated shared
+# S3 Files filesystem (storage.tf). All demo users share that filesystem.
+# The guest cannot PutObject into its backing bucket; S3 Files exports writes.
 
 resource "aws_iam_role" "microvm" {
   name = "${var.name}-microvm"

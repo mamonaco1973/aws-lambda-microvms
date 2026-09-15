@@ -54,8 +54,9 @@ resource "aws_lambda_function" "api" {
       MICROVM_ROLE_ARN = aws_iam_role.microvm.arn
       WEB_BUCKET       = aws_s3_bucket.web.id
       SHARE_BUCKET     = aws_s3_bucket.share.id
+      STORAGE_CONFIG   = jsonencode(local.storage)
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.api, aws_iam_role_policy.api, aws_iam_role_policy.microvm]
+  depends_on = [aws_cloudwatch_log_group.api, aws_iam_role_policy.api, aws_iam_role_policy.microvm, aws_iam_role_policy.storage_client]
 }

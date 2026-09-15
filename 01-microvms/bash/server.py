@@ -186,6 +186,10 @@ class Lab:
             else:
                 config = json.loads(data.get("runHookPayload") or "{}")
                 self.runtime = str(config.get("runtime", "unknown"))[:40]
+                if config.get("storage"):
+                    storage = dict(config["storage"], microvm_id=data["microvmId"])
+                    with open("/app/storage.json", "w", encoding="utf-8") as out:
+                        json.dump(storage, out)
                 self.microvm_id = data.get("microvmId")
                 self.session_nonce = str(uuid.uuid4())
         self.events.append({"hook": name, "wall_time": time.time(), "ticks": self.ticks})

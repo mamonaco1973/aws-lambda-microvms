@@ -36,10 +36,15 @@ if [[ -f 01-microvms/terraform.tfstate ]]; then
     for vm_id in ${VM_IDS}; do
       for ((attempt = 1; attempt <= 60; attempt++)); do
         state=$(aws lambda-microvms get-microvm --microvm-identifier "${vm_id}" \
-          --query "state" --output text 2>/dev/null || echo "TERMINATED")
+          --query "state" --output text 2>/dev/null) || { echo "ERROR: Cannot verify ${vm_id}; refusing to delete its network and storage."; exit 1; }
         [[ "${state}" == "TERMINATED" ]] && break
         sleep 2
       done
+    done
+    # Do not tear down a connector underneath a session still terminating.
+    for vm_id in ${VM_IDS}; do
+      state=$(aws lambda-microvms get-microvm --microvm-identifier "${vm_id}" --query state --output text)
+      [[ "${state}" == "TERMINATED" ]] || { echo "ERROR: ${vm_id} is ${state}; retry destroy after termination completes."; exit 1; }
     done
     echo "NOTE: All sessions for ${IMAGE_ARN##*:} terminated."
   done
@@ -56,7 +61,7 @@ fi
 if [[ ! -f dist/bash-app.zip ]]; then
   echo "NOTE: Rebuilding dist/bash-app.zip so the configuration can be evaluated..."
   mkdir -p dist
-  (cd 01-microvms/bash && zip -q -X -r ../../dist/bash-app.zip Dockerfile server.py worker.sh)
+  (cd 01-microvms/bash && zip -q -X -r ../../dist/bash-app.zip Dockerfile server.py worker.sh storage.sh)
 fi
 
 if [[ ! -f dist/controller.zip ]]; then
