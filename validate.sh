@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# validate.sh â€” Suspend/Resume validation
+# validate.sh — Suspend/Resume validation
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Launch a MicroVM from the bash image.
@@ -319,7 +319,7 @@ echo "NOTE: Controller API rejects requests with no access token (401)."
 # ------------------------------------------------------------------------------
 echo ""
 echo "================================================================================="
-echo "  Lambda MicroVMs â€” Deployment validated!"
+echo "  Lambda MicroVMs - Deployment validated!"
 echo "================================================================================="
 echo "  App        : ${APP_URL}"
 echo "  API        : ${API_BASE}"

@@ -1,5 +1,5 @@
 # ==============================================================================
-# HTTP API â€” the only public entry point to the MicroVM control plane
+# HTTP API — the only public entry point to the MicroVM control plane
 # ==============================================================================
 # The Lambda resolves Cognito access tokens for both API and MCP requests.
 # OAuth discovery and login routes remain public. This is an implementation
