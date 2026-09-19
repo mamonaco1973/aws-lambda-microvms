@@ -38,9 +38,13 @@ HTML = """<!doctype html>
   :root { color-scheme: light dark; }
   body { margin: 0; font: 14px system-ui, sans-serif; }
   .wrap { padding: 8px; }
-  img { display: block; max-width: 100%; max-height: 70vh; margin: 0 auto;
-        border-radius: 6px; }
-  pre { margin: 0; max-height: 60vh; overflow: auto; white-space: pre-wrap;
+  /* Pixels, not vh. Inside a host's frame vh is a share of the FRAME, and the
+     frame starts small -- 70vh drew a 50px thumbnail in ChatGPT. 480px keeps
+     a large square render readable without taking over the conversation;
+     the image keeps its own proportions and a small one is not blown up. */
+  img { display: block; max-width: 100%; max-height: 480px; width: auto;
+        height: auto; margin: 0 auto; border-radius: 6px; }
+  pre { margin: 0; max-height: 480px; overflow: auto; white-space: pre-wrap;
         font: 12px ui-monospace, Consolas, monospace; }
   .meta { margin-top: 6px; opacity: .7; font-size: 12px; text-align: center; }
   a { color: inherit; }
@@ -84,6 +88,9 @@ HTML = """<!doctype html>
         if (i < sources.length) { img.src = sources[i]; }
         else { img.replaceWith(el("div", "The image could not be loaded.")); }
       };
+      // The frame is sized from what the page reports; before the image has
+      // loaded that is almost nothing, so report again once it has.
+      img.onload = notifySize;
       img.src = sources[0];
       root.appendChild(img);
     } else if (data.kind === "text") {
@@ -101,9 +108,16 @@ HTML = """<!doctype html>
   var nextId = 1;
   function send(msg) { window.parent.postMessage(msg, "*"); }
   function notifySize() {
+    var h = Math.ceil(document.documentElement.scrollHeight);
     send({ jsonrpc: "2.0", method: "ui/notifications/size-changed",
-           params: { height: document.documentElement.scrollHeight } });
+           params: { height: h } });
+    // ChatGPT's older API for the same thing.
+    if (window.openai && window.openai.notifyIntrinsicHeight) {
+      window.openai.notifyIntrinsicHeight(h);
+    }
   }
+  // Catch every later change too -- a slow image, a font, a wrapped caption.
+  if (window.ResizeObserver) new ResizeObserver(notifySize).observe(document.body);
   window.addEventListener("message", function (event) {
     var m = event.data;
     if (!m || m.jsonrpc !== "2.0") return;
