@@ -106,6 +106,10 @@ from that one fact.
   bucket-policy problem and is not one. It also needs `s3:ListBucket` on the
   bucket itself (a different resource shape) because `/dl` lists the link's
   prefix to recover the filename.
+- **`view_file` is `share_file` signed `inline`.** Same staging, same
+  token, route `/view/<token>`. Markup and script are forced to text/plain so
+  a generated page cannot run in the viewer's browser. `/view` calls
+  `HeadObject` to read the type, which `s3:GetObject` already covers.
 - **`share_file` hands out `/dl/<token>`, not a presigned URL.** The signature
   is minted when the link is clicked, so it cannot be orphaned by the Lambda's
   temporary credentials expiring. `/dl` is deliberately unauthenticated — the
@@ -155,7 +159,7 @@ bound, not the user list.
 3. Handle the action in `run_tool` or `act`.
 
 Tool arguments arrive as `params.arguments`. This path is exercised only by
-`run_cell`, `get_result`, `get_file` and `share_file` — the project this pattern
+`run_cell`, `get_result`, `get_file`, `share_file` and `view_file` — the project this pattern
 came from had no tool that took arguments at all.
 
 ## Code Commenting Standards

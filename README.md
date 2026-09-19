@@ -169,7 +169,7 @@ exists to make safe.
 Add the printed `MCP` URL as a custom connector. The client discovers the
 authorization server, registers itself, opens the Cognito hosted UI for you to
 sign in, and then calls the tools: `launch_session`, `run_cell`, `get_result`,
-`get_file`, `share_file`, `session_status`, `suspend_session`, `reset_session`,
+`get_file`, `share_file`, `view_file`, `session_status`, `suspend_session`, `reset_session`,
 `terminate_session`.
 
 The OAuth proxy enforces **PKCE** (RFC 7636, S256 only). Claude does not
@@ -188,7 +188,10 @@ plot and you see the plot.
 Files over 750 KB, and anything with nothing to render, fall back to
 `share_file` behaviour: the controller stages the object in a private bucket
 and returns a short link — `https://…/dl/66d3f96230fb` — that redirects to a
-freshly signed S3 URL on each click. Signing at click time rather than up front
+freshly signed S3 URL on each click. `view_file` stages the file the same way
+but returns `/view/…`, which opens it in the browser instead of downloading it
+— for an image or report the user wants to look at rather than keep. Markup
+and script (HTML, SVG, JavaScript) open as source text, not rendered. Signing at click time rather than up front
 is what makes the link durable: a URL signed once carries the Lambda's temporary
 credentials and dies with them. Links stop working when the object is reaped,
 within about a day. The **MicroVM never

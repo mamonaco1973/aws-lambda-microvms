@@ -56,6 +56,7 @@ TOOL_ACTIONS = {
     "terminate_session": "terminate",
     "get_file": "file",
     "share_file": "share",
+    "view_file": "view",
 }
 
 REGION = os.environ["AWS_REGION"]
@@ -96,6 +97,14 @@ INLINE_LIMIT = 750_000
 # once, up front, would bind the link to the Lambda's temporary credentials and
 # it could stop working long before its stated expiry.
 SHARE_EXPIRY_SECONDS = 28800
+
+# Types a browser would EXECUTE rather than display if served inline: markup
+# and script. A view_file link serves these as plain text, so a generated page
+# or SVG shows its source instead of running in the viewer's browser. Download
+# links are unaffected -- a saved file does not run on its own.
+ACTIVE_TYPES = {"text/html", "application/xhtml+xml", "image/svg+xml",
+                "text/javascript", "application/javascript",
+                "application/xml", "text/xml"}
 
 # Types that are text despite not saying text/*. Worth listing because these
 # are exactly what a cell tends to produce -- a JSON result, an SVG plot.
@@ -456,8 +465,8 @@ def sniff(body, declared):
     return declared
 
 
-def share(body, mime, name):
-    """Stage a file in S3 and return a short download link for it.
+def share(body, mime, name, route="dl"):
+    """Stage a file in S3 and return a short link to it.
 
     Returns a link to this API rather than a presigned S3 URL, for two
     reasons. The signature is then minted when the link is CLICKED, from
@@ -470,9 +479,13 @@ def share(body, mime, name):
         body: The file's bytes.
         mime: Its media type, as decided by sniff().
         name: The filename to offer the downloader.
+        route: "dl" for a link that downloads the file, "view" for one that
+            opens it in the browser. The staged object is identical; only the
+            route -- and so the Content-Disposition it is signed with --
+            differs.
 
     Returns:
-        An absolute https URL to this API's /dl route.
+        An absolute https URL to this API's /dl or /view route.
     """
     s3 = boto3.client("s3", region_name=REGION)
     token = uuid.uuid4().hex[:12]
@@ -481,14 +494,16 @@ def share(body, mime, name):
     # to someone who already holds the link.
     s3.put_object(Bucket=SHARE_BUCKET, Key=f"{token}/{name}", Body=body,
                   ContentType=mime)
-    return f"{APP_URL}/dl/{token}"
+    return f"{APP_URL}/{route}/{token}"
 
 
-def download(token):
-    """Redirect a /dl link to a freshly signed S3 URL.
+def download(token, inline=False):
+    """Redirect a /dl or /view link to a freshly signed S3 URL.
 
     Args:
         token: The random segment from the link.
+        inline: True for /view -- sign the URL so the browser displays the
+            file rather than saving it.
 
     Returns:
         A 302 to a presigned URL, or a 404 when the object is gone -- which is
@@ -507,13 +522,19 @@ def download(token):
 
     key = contents[0]["Key"]
     name = key.split("/", 1)[1]
-    url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": SHARE_BUCKET, "Key": key,
-                # Without this the browser would name the saved file after the
-                # key, random segment and all.
-                "ResponseContentDisposition": f'attachment; filename="{name}"'},
-        ExpiresIn=SHARE_EXPIRY_SECONDS)
+    # The filename matters either way: without it the browser would name the
+    # saved file -- or the tab -- after the key, random segment and all.
+    disposition = "inline" if inline else "attachment"
+    params = {"Bucket": SHARE_BUCKET, "Key": key,
+              "ResponseContentDisposition": f'{disposition}; filename="{name}"'}
+    if inline:
+        # Anything a browser would execute is served as text, so viewing a
+        # generated page shows its source rather than running it.
+        stored = s3.head_object(Bucket=SHARE_BUCKET, Key=key)["ContentType"]
+        if stored.split(";")[0].strip().lower() in ACTIVE_TYPES:
+            params["ResponseContentType"] = "text/plain; charset=utf-8"
+    url = s3.generate_presigned_url("get_object", Params=params,
+                                    ExpiresIn=SHARE_EXPIRY_SECONDS)
     return {"statusCode": 302,
             "headers": {"Location": url, "Cache-Control": "no-store"},
             "body": ""}
@@ -621,7 +642,7 @@ def run_tool(tool_name, arguments, user):
             return {"state": "NONE", "note": "No sandbox. Call launch_session."}
         return status(client, runtime, session)
 
-    if action in ("file", "share"):
+    if action in ("file", "share", "view"):
         session = load(user, runtime)
         if not session:
             raise ValueError("Launch this runtime first")
@@ -643,11 +664,14 @@ def run_tool(tool_name, arguments, user):
                 return {"_content": [{"type": "image", "mimeType": mime,
                                       "data": base64.b64encode(body).decode()}]}
 
-        url = share(body, mime, name)
+        url = share(body, mime, name, "view" if action == "view" else "dl")
         # Say plainly when this was a fallback rather than what was asked for,
         # so the model tells the user why they got a link instead of a picture
         # instead of silently retrying get_file.
         note = "Give the user this link; it is not a file you can read."
+        if action == "view":
+            note = ("Give the user this link; it opens the file in their "
+                    "browser rather than downloading it.")
         if action == "file":
             note = (f"{name} is {len(body)} bytes, over the {INLINE_LIMIT}-byte "
                     "limit for displaying a file in the conversation, so it was "
@@ -690,11 +714,14 @@ def api(event, context):
     # and a viewer cannot be asked to sign in to collect a file. The random
     # segment is the credential, exactly as it is for a presigned URL -- this is
     # the same bearer-link model, with a shorter string.
-    if http.get("method") == "GET" and event.get("rawPath", "").startswith("/dl/"):
-        token = event["rawPath"][len("/dl/"):]
+    # /view is the same link, opened in the browser instead of saved.
+    raw = event.get("rawPath", "")
+    if http.get("method") == "GET" and raw.startswith(("/dl/", "/view/")):
+        inline = raw.startswith("/view/")
+        token = raw[len("/view/" if inline else "/dl/"):]
         if not re.fullmatch(r"[0-9a-f]{1,32}", token):
             return response(400, {"error": "Invalid download link"})
-        return download(token)
+        return download(token, inline)
 
     user = caller(event)
     if not user:

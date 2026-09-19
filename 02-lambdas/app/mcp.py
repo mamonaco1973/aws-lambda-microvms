@@ -71,7 +71,9 @@ Other things that are true here:
     it through a cell. Cell output is capped at 64 KB and truncated, so
     base64-ing an image into a cell and reassembling it in chunks does not
     work. get_file returns an image rendered in the conversation, and falls
-    back to a download link when the file is too large."""
+    back to a download link when the file is too large.
+  * For a link rather than inline content: view_file opens the file in the
+    user's browser (to look at it), share_file downloads it (to keep it)."""
 _SERVER_NAME = "microvm-sandbox-mcp"
 _SERVER_VER  = "1.0.0"
 
@@ -153,11 +155,37 @@ TOOL_REGISTRY = [
     {
         "name": "share_file",
         "description": (
-            "Upload a file from the sandbox and return a time-limited download "
-            "link for the user. Use this for anything the user should keep or "
-            "open outside the conversation -- an archive, a dataset, a large "
-            "image -- and for files too big to display. The link expires; give "
-            "it to the user rather than trying to read it yourself."
+            "Upload a file from the sandbox and return a time-limited link "
+            "that DOWNLOADS it -- the browser saves it to the user's disk.\n\n"
+            "Use this when the user wants to keep the file or use it in "
+            "another program: an archive, a dataset, a spreadsheet, source "
+            "code, a build artifact. Use view_file instead when the user just "
+            "wants to look at the file (an image, a PDF, a report, a log); a "
+            "download makes them find and open the file themselves.\n\n"
+            "The link expires; give it to the user rather than trying to read "
+            "it yourself."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"path": {"type": "string",
+                                    "description": "Path to the file in the sandbox."}},
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "view_file",
+        "description": (
+            "Upload a file from the sandbox and return a time-limited link "
+            "that OPENS it in the user's browser instead of downloading it.\n\n"
+            "Use this when the user wants to look at the file: an image, a "
+            "chart, a PDF, a text report, a CSV, a log -- especially one too "
+            "large for get_file to show in the conversation. Use share_file "
+            "instead when the user wants to keep the file or open it in "
+            "another program (an archive, a dataset to load, code to run); a "
+            "browser tab is the wrong place for those.\n\n"
+            "HTML, SVG and other files a browser would run are shown as their "
+            "source text, not rendered. The link expires; give it to the user "
+            "rather than trying to read it yourself."
         ),
         "inputSchema": {
             "type": "object",
