@@ -669,15 +669,17 @@ def run_tool(tool_name, arguments, user):
                                         "text": text[:VIEWER_TEXT_LIMIT]}}
             if mime.startswith("image/"):
                 data = base64.b64encode(body).decode()
-                # The viewer tries the data: URI first and falls back to a
-                # /view link, since whether a host's frame allows data:
-                # images is not documented. Staging the link costs one S3
-                # write per image shown.
+                # The viewer loads the image from a /view link, never from
+                # base64 in structuredContent. ChatGPT hands structuredContent
+                # to the model as well as the viewer, so an embedded image put
+                # most of a megabyte into it -- and those results stopped
+                # reaching the viewer at all. The link path is what displayed
+                # the large images reliably. Claude still gets the image block
+                # below, which is untouched.
                 return {"_content": [{"type": "image", "mimeType": mime,
                                       "data": data}],
                         "_structured": {"kind": "image", "name": name,
                                         "mime": mime, "bytes": len(body),
-                                        "src": f"data:{mime};base64,{data}",
                                         "url": share(body, mime, name, "view")}}
 
         # An image too big to inline is still shown by the viewer, so it
@@ -685,17 +687,24 @@ def run_tool(tool_name, arguments, user):
         showable = mime.startswith("image/") and mime not in ACTIVE_TYPES
         route = "view" if action == "view" or (action == "file" and showable) else "dl"
         url = share(body, mime, name, route)
-        # Say plainly when this was a fallback rather than what was asked for,
-        # so the model tells the user why they got a link instead of a picture
-        # instead of silently retrying get_file.
+        # The note is what the model reads, and it must not claim the user saw
+        # nothing when the viewer showed them the image. An earlier wording
+        # ("too large to display, uploaded instead") sent the model off to
+        # shrink the file and fetch it again, and the user saw it twice. It
+        # cannot say "displayed" outright either: the server cannot tell
+        # which client is calling, and only some hosts draw the viewer.
         note = "Give the user this link; it is not a file you can read."
         if action == "view":
             note = ("Give the user this link; it opens the file in their "
                     "browser rather than downloading it.")
         if action == "file":
-            note = (f"{name} is {len(body)} bytes, over the {INLINE_LIMIT}-byte "
-                    "limit for displaying a file in the conversation, so it was "
-                    "uploaded instead. " + note)
+            note = (f"{name} is {len(body)} bytes, too large to embed, so it "
+                    "was uploaded and returned as a link. " + note)
+        if action in ("file", "view") and showable:
+            note = ("This image is already shown to the user in the inline "
+                    "viewer where the client supports one; the link is the "
+                    "fallback. Done -- do not fetch, convert or shrink the "
+                    "file to show it again.")
         result = {"name": name, "bytes": len(body), "mime": mime,
                   "url": url, "expires_in_seconds": SHARE_EXPIRY_SECONDS,
                   "note": note}

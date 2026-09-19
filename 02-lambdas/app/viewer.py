@@ -21,10 +21,9 @@ URI = "ui://microvm/file-viewer.html"
 MIME = "text/html;profile=mcp-app"
 
 # One page, three kinds of payload, all from structuredContent:
-#   image  {kind, name, mime, bytes, src?, url?}  src is a data: URI for small
-#          images; url is a /view link. src is tried first and url is the
-#          fallback, because it is not documented whether a host's frame CSP
-#          allows data: images.
+#   image  {kind, name, mime, bytes, url}  url is a /view link. The server no
+#          longer sends a data: URI -- see handler.run_tool -- but src is still
+#          honoured if present, tried before url.
 #   text   {kind, name, text}
 #   link   {kind, name, url}
 #
@@ -54,6 +53,19 @@ HTML = """<!doctype html>
 (function () {
   var root = document.getElementById("root");
   var drawn = false;
+
+  // If no result ever arrives, say so rather than showing "Loading file..."
+  // indefinitely -- a silent spinner is indistinguishable from a slow load.
+  setTimeout(function () {
+    if (!drawn) {
+      root.textContent = "";
+      var note = document.createElement("div");
+      note.className = "meta";
+      note.textContent = "The file was not received. Ask for it again.";
+      root.appendChild(note);
+      notifySize();
+    }
+  }, 15000);
 
   function el(tag, text) {
     var e = document.createElement(tag);

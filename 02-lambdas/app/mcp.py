@@ -74,6 +74,9 @@ Other things that are true here:
     base64-ing an image into a cell and reassembling it in chunks does not
     work. get_file returns an image rendered in the conversation, and falls
     back to a download link when the file is too large.
+  * Show each file ONCE. Call get_file or view_file for it -- not both -- and
+    never fetch the same file again, or convert or shrink it, to show it a
+    second time: the user already sees it, and a second call shows it twice.
   * For a link rather than inline content: view_file opens the file in the
     user's browser (to look at it), share_file downloads it (to keep it)."""
 _SERVER_NAME = "microvm-sandbox-mcp"
@@ -145,7 +148,9 @@ TOOL_REGISTRY = [
             "output is capped and truncated, so base64-ing a file into a cell "
             "and reassembling it does not work; this path has no such limit. "
             "A file too large to show, or of a type with nothing to render, "
-            "comes back as a download link automatically."
+            "comes back as a download link automatically.\n\n"
+            "Call this once per file. Do not also call view_file for it, and "
+            "do not fetch it again: that shows the user the same file twice."
         ),
         "inputSchema": {
             "type": "object",
@@ -187,7 +192,9 @@ TOOL_REGISTRY = [
             "browser tab is the wrong place for those.\n\n"
             "HTML, SVG and other files a browser would run are shown as their "
             "source text, not rendered. The link expires; give it to the user "
-            "rather than trying to read it yourself."
+            "rather than trying to read it yourself.\n\n"
+            "Call this once per file, and not in addition to get_file for "
+            "the same file -- that shows the user the same file twice."
         ),
         "inputSchema": {
             "type": "object",
