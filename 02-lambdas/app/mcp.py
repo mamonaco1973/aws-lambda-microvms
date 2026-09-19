@@ -25,6 +25,8 @@ import os
 import secrets
 import urllib.request
 
+import viewer
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -231,6 +233,13 @@ TOOL_REGISTRY = [
 ]
 
 
+# get_file and view_file show the user a file, so their results are also
+# rendered by the inline viewer in hosts that support MCP Apps UI (ChatGPT).
+# Hosts that render the image content block themselves (Claude) are unchanged.
+for _tool in TOOL_REGISTRY:
+    if _tool["name"] in ("get_file", "view_file"):
+        _tool["_meta"] = viewer.TOOL_META
+
 _TOOL_NAMES = {t["name"] for t in TOOL_REGISTRY}
 
 
@@ -334,7 +343,7 @@ def _handle_initialize(req, session_id):
         req.get("id"),
         {
             "protocolVersion": MCP_VERSION,
-            "capabilities":    {"tools": {}},
+            "capabilities":    {"tools": {}, "resources": {}},
             "serverInfo":      {"name": _SERVER_NAME, "version": _SERVER_VER},
             "instructions":    SERVER_INSTRUCTIONS,
         },
@@ -344,6 +353,18 @@ def _handle_initialize(req, session_id):
 
 def _handle_tools_list(req):
     return _rpc_ok(req.get("id"), {"tools": TOOL_REGISTRY})
+
+
+def _handle_resources_list(req):
+    return _rpc_ok(req.get("id"), {"resources": [
+        {"uri": viewer.URI, "name": "File viewer", "mimeType": viewer.MIME}]})
+
+
+def _handle_resources_read(req):
+    uri = (req.get("params") or {}).get("uri", "")
+    if uri != viewer.URI:
+        return _rpc_error(req.get("id"), -32602, f"Unknown resource: {uri}")
+    return _rpc_ok(req.get("id"), {"contents": [viewer.resource()]})
 
 
 def _handle_tools_call(req, user_email, run_tool):
@@ -378,11 +399,19 @@ def _handle_tools_call(req, user_email, run_tool):
     # client can render them. Everything else is status, and reads better as
     # pretty JSON: a job id or an exit code buried in one line is easy to
     # misread when the model reads it back to the user.
+    #
+    # _structured is what the inline viewer draws. It rides alongside the
+    # content rather than replacing it, so a host without the viewer loses
+    # nothing.
+    structured = result.pop("_structured", None) if isinstance(result, dict) else None
     if isinstance(result, dict) and "_content" in result:
-        return _rpc_ok(req.get("id"), {"content": result["_content"]})
-
-    text = json.dumps(result, indent=2, default=str)
-    return _rpc_ok(req.get("id"), {"content": [{"type": "text", "text": text}]})
+        body = {"content": result["_content"]}
+    else:
+        text = json.dumps(result, indent=2, default=str)
+        body = {"content": [{"type": "text", "text": text}]}
+    if structured:
+        body["structuredContent"] = structured
+    return _rpc_ok(req.get("id"), body)
 
 
 # ================================================================================
@@ -420,5 +449,9 @@ def handle_mcp(event, run_tool):
         return _handle_tools_list(req)
     if method == "tools/call":
         return _handle_tools_call(req, user_id, run_tool)
+    if method == "resources/list":
+        return _handle_resources_list(req)
+    if method == "resources/read":
+        return _handle_resources_read(req)
 
     return _rpc_error(req.get("id"), -32601, f"Method not found: {method}")

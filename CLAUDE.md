@@ -106,6 +106,12 @@ from that one fact.
   bucket-policy problem and is not one. It also needs `s3:ListBucket` on the
   bucket itself (a different resource shape) because `/dl` lists the link's
   prefix to recover the filename.
+- **ChatGPT needs the viewer to show an image.** It passes MCP image
+  blocks to the model but never draws them. `app/viewer.py` is an MCP Apps UI
+  resource (`text/html;profile=mcp-app`) that `get_file`/`view_file` reference
+  via `_meta.ui.resourceUri` and `openai/outputTemplate`. Its CSP must list the
+  API origin AND the share bucket's S3 hosts, because `/view` redirects there.
+  The HTML is a Python string because apply.sh packages only `app/*.py`.
 - **`view_file` is `share_file` signed `inline`.** Same staging, same
   token, route `/view/<token>`. Markup and script are forced to text/plain so
   a generated page cannot run in the viewer's browser. `/view` calls

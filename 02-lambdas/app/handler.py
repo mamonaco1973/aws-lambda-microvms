@@ -106,6 +106,10 @@ ACTIVE_TYPES = {"text/html", "application/xhtml+xml", "image/svg+xml",
                 "text/javascript", "application/javascript",
                 "application/xml", "text/xml"}
 
+# How much of a text file the inline viewer is given. It is a preview; the
+# model already receives the whole file as text content.
+VIEWER_TEXT_LIMIT = 20_000
+
 # Types that are text despite not saying text/*. Worth listing because these
 # are exactly what a cell tends to produce -- a JSON result, an SVG plot.
 TEXTUAL = {"application/json", "application/xml", "image/svg+xml",
@@ -658,13 +662,29 @@ def run_tool(tool_name, arguments, user):
             # image block carries raster data, so an SVG returned that way
             # renders as nothing. As text the client can draw it.
             if mime.startswith("text/") or mime in TEXTUAL:
-                return {"_content": [{"type": "text",
-                                      "text": body.decode("utf-8", "replace")}]}
+                text = body.decode("utf-8", "replace")
+                return {"_content": [{"type": "text", "text": text}],
+                        "_structured": {"kind": "text", "name": name,
+                                        "bytes": len(body),
+                                        "text": text[:VIEWER_TEXT_LIMIT]}}
             if mime.startswith("image/"):
+                data = base64.b64encode(body).decode()
+                # The viewer tries the data: URI first and falls back to a
+                # /view link, since whether a host's frame allows data:
+                # images is not documented. Staging the link costs one S3
+                # write per image shown.
                 return {"_content": [{"type": "image", "mimeType": mime,
-                                      "data": base64.b64encode(body).decode()}]}
+                                      "data": data}],
+                        "_structured": {"kind": "image", "name": name,
+                                        "mime": mime, "bytes": len(body),
+                                        "src": f"data:{mime};base64,{data}",
+                                        "url": share(body, mime, name, "view")}}
 
-        url = share(body, mime, name, "view" if action == "view" else "dl")
+        # An image too big to inline is still shown by the viewer, so it
+        # gets a /view link rather than a download.
+        showable = mime.startswith("image/") and mime not in ACTIVE_TYPES
+        route = "view" if action == "view" or (action == "file" and showable) else "dl"
+        url = share(body, mime, name, route)
         # Say plainly when this was a fallback rather than what was asked for,
         # so the model tells the user why they got a link instead of a picture
         # instead of silently retrying get_file.
@@ -676,9 +696,14 @@ def run_tool(tool_name, arguments, user):
             note = (f"{name} is {len(body)} bytes, over the {INLINE_LIMIT}-byte "
                     "limit for displaying a file in the conversation, so it was "
                     "uploaded instead. " + note)
-        return {"name": name, "bytes": len(body), "mime": mime,
-                "url": url, "expires_in_seconds": SHARE_EXPIRY_SECONDS,
-                "note": note}
+        result = {"name": name, "bytes": len(body), "mime": mime,
+                  "url": url, "expires_in_seconds": SHARE_EXPIRY_SECONDS,
+                  "note": note}
+        if action in ("file", "view"):
+            result["_structured"] = {"kind": "image" if showable else "link",
+                                     "name": name, "mime": mime,
+                                     "bytes": len(body), "url": url}
+        return result
 
     return act(client, user, runtime, action,
                arguments.get("code", ""), arguments.get("job", ""))

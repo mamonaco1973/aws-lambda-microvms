@@ -191,7 +191,13 @@ and returns a short link — `https://…/dl/66d3f96230fb` — that redirects to
 freshly signed S3 URL on each click. `view_file` stages the file the same way
 but returns `/view/…`, which opens it in the browser instead of downloading it
 — for an image or report the user wants to look at rather than keep. Markup
-and script (HTML, SVG, JavaScript) open as source text, not rendered. Signing at click time rather than up front
+and script (HTML, SVG, JavaScript) open as source text, not rendered.
+
+**Images in ChatGPT.** ChatGPT does not draw an MCP image content block for the
+user, so `get_file` and `view_file` also return `structuredContent` and point
+at an MCP Apps UI resource, `ui://microvm/file-viewer.html` (`app/viewer.py`).
+ChatGPT renders that page inline and it draws the image. Claude renders the
+image block as before; the viewer is additive. Signing at click time rather than up front
 is what makes the link durable: a URL signed once carries the Lambda's temporary
 credentials and dies with them. Links stop working when the object is reaped,
 within about a day. The **MicroVM never
